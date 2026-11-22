@@ -1,0 +1,132 @@
+# ───────────────────────── Secrets & credentials ─────────────────────────
+# NEVER commit secrets. Use .env.example for documenting variable names only.
+.env
+.env.*
+!.env.example
+*.local
+*.pem
+*.key
+*.crt
+*.cer
+*.der
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.mobileprovision
+*.p8
+id_rsa*
+id_ed25519*
+id_ecdsa*
+*.gpg
+*.asc
+secrets/
+.secrets/
+secret*.json
+credentials*.json
+service-account*.json
+*-credentials.json
+.npmrc
+.yarnrc
+.netrc
+# Local HTTPS dev certs (mkcert, basic-ssl, etc.)
+certs/
+.cert/
+*.cert
+localhost*.pem
+# Tunnel configs (cloudflared, ngrok) can contain tokens
+.cloudflared/
+cloudflared*.yml
+cloudflared*.json
+ngrok.yml
+# Hosting provider local state (may contain tokens)
+.vercel/
+.netlify/
+.wrangler/
+.firebase/
+.firebaserc
+.dev.vars
+# Claude Code local settings (may contain per-user permissions/tokens)
+.claude/settings.local.json
+
+# ───────────────────────── Dependencies ─────────────────────────
+node_modules/
+.pnpm-store/
+.yarn/*
+!.yarn/patches
+!.yarn/releases
+.pnp.*
+jspm_packages/
+
+# ───────────────────────── Build output ─────────────────────────
+dist/
+dist-ssr/
+build/
+out/
+dev-dist/
+*.tsbuildinfo
+.vite/
+.cache/
+.parcel-cache/
+.turbo/
+.eslintcache
+.stylelintcache
+
+# ───────────────────────── Tests & coverage ─────────────────────────
+coverage/
+.nyc_output/
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
+playwright/.auth/
+__screenshots__/actual/
+*.lcov
+
+# ───────────────────────── Logs ─────────────────────────
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# ───────────────────────── Large / private media ─────────────────────────
+# Real photos of people's homes must not be committed. Commit only synthetic
+# fixtures, or real fixtures explicitly placed in tests/fixtures/public/.
+private/
+tests/fixtures/private/
+*.heic
+*.HEIC
+*.mov
+*.MOV
+*.mp4
+# Downloaded model weights / OpenCV builds (fetched at runtime or by script)
+models/
+*.onnx
+*.ort
+*.safetensors
+*.bin
+# User data exports
+*.hangplan.zip
+
+# ───────────────────────── OS & editors ─────────────────────────
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.swp
+*.swo
+*~
+.idea/
+*.iml
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+*.sublime-workspace
+.history/
