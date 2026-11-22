@@ -9,6 +9,13 @@ import { VitePWA } from 'vite-plugin-pwa';
 // generated locally and is never committed.
 const useHttps = process.env.HTTPS === '1';
 
+// Expose on the LAN when HTTPS=1, and accept requests forwarded by a
+// cloudflared quick tunnel (*.trycloudflare.com), for phone testing.
+const network = {
+  host: useHttps ? true : undefined,
+  allowedHosts: ['.trycloudflare.com'],
+};
+
 export default defineConfig({
   plugins: [
     react(),
@@ -38,7 +45,8 @@ export default defineConfig({
       },
     }),
   ],
-  server: { host: useHttps ? true : undefined },
+  server: network,
+  preview: network,
   test: {
     environment: 'node',
     include: ['src/**/*.test.{ts,tsx}', 'tests/unit/**/*.test.{ts,tsx}'],

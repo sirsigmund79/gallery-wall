@@ -26,15 +26,32 @@ npm run ci           # lint + typecheck + unit tests + production build
 
 ### Testing on a real phone
 
-Camera and motion sensors need HTTPS. On the same Wi-Fi as your computer:
+Camera, motion sensors and the service worker all need HTTPS. Two options:
+
+**A. Tunnel (recommended; trusted certificate, PWA install works, any network)**
 
 ```sh
-HTTPS=1 npm run dev  # serves https://<your-LAN-IP>:5173 with a throwaway self-signed cert
+npm run build && npx vite preview          # or: npm run dev
+cloudflared tunnel --url http://localhost:4173   # 5173 for dev
 ```
 
-Accept the certificate warning on the phone once. Alternatives: [mkcert](https://github.com/FiloSottile/mkcert)
-(install its root CA on the phone) or a tunnel such as `cloudflared tunnel --url http://localhost:5173`.
-Certificates, keys and tunnel configs are git-ignored — never commit them.
+Open the printed `https://<random>.trycloudflare.com` URL on the phone. Install cloudflared with
+`brew install cloudflared` (macOS) or see Cloudflare's docs. Quick tunnels need no account. The URL is
+public while the tunnel runs, so stop it (Ctrl-C) when you're done.
+
+**B. Same Wi-Fi, self-signed certificate (no extra tools)**
+
+```sh
+npm run dev:host        # https://<your-LAN-IP>:5173, live reload
+npm run build && npm run preview:host   # https://<your-LAN-IP>:4173, production build
+```
+
+Open the "Network" URL Vite prints and accept the certificate warning (iOS: *Show Details → visit
+this website*). Camera and sensors work, but browsers usually refuse to register a service worker
+on an untrusted certificate, so use option A to test installing or offline use.
+[mkcert](https://github.com/FiloSottile/mkcert) with its root CA installed on the phone is a third option.
+
+Certificates, keys and tunnel configs are git-ignored. Never commit them.
 
 ## Layout
 
