@@ -91,6 +91,8 @@ export interface Wall {
   calibration: CalibrationRecord;
   bounds: { left: Mm; top: Mm; right: Mm; bottom: Mm };
   datums: { floorY?: Mm; ceilingY?: Mm };
+  /** Areas suggestions must not cover (doors, windows…), in wall mm. */
+  keepOut?: { x: Mm; y: Mm; w: Mm; h: Mm; label: string }[];
   foreground: ForegroundObject[];
   layouts: Layout[];
   createdAt: number;

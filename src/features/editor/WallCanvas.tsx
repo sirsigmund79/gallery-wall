@@ -206,6 +206,12 @@ export function WallCanvas({ wall, placements, pieces, selectedId, snapping, uni
                 <Text listening={false} x={b.left + 6 * px} y={lines.eyeY - 16 * px} text="Eye level" fontSize={12 * px} fill="#fff" />
               </>
             )}
+            {(wall.keepOut ?? []).map((k, i) => (
+              <Group key={`ko${i}`} listening={false}>
+                <Rect x={k.x} y={k.y} width={k.w} height={k.h} stroke="#ffffff" opacity={0.6} strokeWidth={1.5} dash={[8, 6]} strokeScaleEnabled={false} />
+                <Text x={k.x + 6 * px} y={k.y + 6 * px} text={`${k.label} · no art`} fontSize={12 * px} fill="#fff" opacity={0.85} />
+              </Group>
+            ))}
             {wall.datums.floorY !== undefined && (
               <Line listening={false} points={[0, wall.datums.floorY, photoW, wall.datums.floorY]} stroke="#30d158" strokeWidth={1.5} strokeScaleEnabled={false} />
             )}

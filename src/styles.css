@@ -254,3 +254,15 @@ fieldset.card { display: flex; flex-direction: column; gap: 12px; }
 .log-tail { max-height: 9rem; margin: 8px 0; }
 .error-box { margin-top: 12px; }
 .error-box .actions { margin-top: 8px; }
+
+/* ───────── Suggestions ───────── */
+.sheet-tall { max-height: 90vh; max-height: 90dvh; display: flex; flex-direction: column; gap: 10px; }
+.seg-wide { width: 100%; }
+.seg-wide button { flex: 1; }
+.chip-btn.on { background: var(--accent); color: var(--accent-text); border-color: transparent; }
+.suggestions { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; overflow-y: auto; }
+.suggestions li { display: flex; flex-direction: column; align-items: stretch; }
+.suggestion { display: flex; flex-direction: column; padding: 0; overflow: hidden; height: auto; border-radius: 12px; }
+.suggestion-img { width: 100%; aspect-ratio: 4 / 3; display: block; }
+.suggestion-meta { padding: 6px 8px; font-size: 0.85rem; text-align: left; }
+button.link.small { font-size: 0.8rem; min-height: 36px; }

@@ -12,6 +12,7 @@ Snippets copied from other projects are listed here with their source and licens
 | dexie | Apache-2.0 | IndexedDB wrapper |
 | dexie-react-hooks | Apache-2.0 | Live queries in React |
 | konva, react-konva | MIT | Layout editor canvas |
+| maxrects-packer | MIT | Salon-style packing for layout suggestions (in a Web Worker) |
 | @techstark/opencv-js (OpenCV 4.12) | Apache-2.0 | Rectangle detection, perspective transforms and warps (in a Web Worker) |
 | workbox-window (via vite-plugin-pwa) | MIT | Service worker registration |
 

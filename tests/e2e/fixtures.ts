@@ -107,3 +107,13 @@ export async function clickImagePoint(page: Page, x: number, y: number, w: numbe
   const box = (await page.locator('.markup svg').boundingBox())!;
   await page.mouse.click(box.x + (x / w) * box.width, box.y + (y / h) * box.height);
 }
+
+/** Add a piece by hand (US units). */
+export async function addPiece(page: Page, name: string, w: string, h: string) {
+  await page.goto('/#/art/new');
+  await page.getByLabel('Name').fill(name);
+  await page.getByLabel('Width').fill(w);
+  await page.getByLabel('Height').fill(h);
+  await page.getByRole('button', { name: 'Save' }).click();
+  await page.waitForURL(/#\/art$/);
+}

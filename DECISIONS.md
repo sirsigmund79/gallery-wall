@@ -209,3 +209,33 @@ Deviations from the spec (`docs/SPEC.md`), and choices the spec left open. Newes
   - Canny uses fixed thresholds (25/70) instead of brightness-scaled ones, which went deaf on
     bright walls.
   - Wall photos will also find doors, windows and the like; "Not a piece" removes them.
+
+## Mix-and-match suggestions (spec §6.6, M6)
+
+- **Engine:** `src/geometry/layout/arrange/` (pure, seeded mulberry32, deterministic), run in
+  `src/workers/arrange.worker.ts`.
+  - **Zone:** usable area = wall bounds minus 6 in margins (8 in above a marked floor). The target
+    centre is at 57 in eye level (else the middle), horizontally on the **widest clear stretch**
+    between keep-outs. Target group width = 66% of that stretch; target aspect 1.4.
+  - **Mix mode** (default when fewer than 2 pieces are placed): picks sets whose art area is 35–50%
+    of the *art zone* (target width × height). The spec says "wall area"; applied to a whole wall
+    that recommends far too much art, so the zone is used. The hero piece is biased towards larger
+    pieces, the size ratio is capped at 10:1, and sets have at most 9 pieces. Pieces marked `hung`
+    on another wall are excluded.
+  - **Styles:** row (centre/top/bottom aligned; splits into a two-row "gallery line" when one row
+    is too wide), grid (rows × cols closest to the target aspect, pieces centred in cells), salon
+    (**maxrects-packer** per spec §0A, random bin aspect/fill/order, then centred), symmetric (hero
+    centred, similar pairs mirrored, leftovers above/below).
+  - **Hard constraints:** inside the usable area, no overlaps (at ≥ 0.9 × gap), no keep-out
+    overlap, locked pieces unchanged.
+  - **Score (weights in `score.ts`):** centre 2, balance 1.5, gap uniformity 1.5, alignment 1,
+    width-fit 1, fill (reads as one block) 1, margin 0.5.
+  - **Variety:** first one per (style, piece set), and at most 2 per style for "Any". Then relaxed.
+  - Spec acceptance passes: 8 mixed pieces on 3 × 2.4 m give ≥ 3 valid variants per style
+    (symmetric ≥ 1: it needs pairs), each in < 500 ms. 1,000-input property test: no overlap,
+    inside bounds, locks respected.
+- **Keep-outs** are `Wall.keepOut` rects, drawn dashed on the canvas ("Door · no art"). They're set
+  from a door used as the size reference (see the wall flow).
+- **UI:** editor → **Suggest**: Mix from my art / Rearrange these, style chips, 6 previews
+  (`WallPreview`, an SVG of the wall photo plus thumbnails), Shuffle. Tapping a preview applies it
+  as one undoable step; "Save as new layout" keeps the current one.

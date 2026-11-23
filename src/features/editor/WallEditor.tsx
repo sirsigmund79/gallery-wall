@@ -14,6 +14,7 @@ import { Thumb } from '../../ui/Thumb.tsx';
 import { fitsWall, freeSpot } from './placement.ts';
 import { useEditor } from './store.ts';
 import { WallCanvas } from './WallCanvas.tsx';
+import { SuggestSheet } from './SuggestSheet.tsx';
 
 const nudgeStep = (u: LengthUnit): Mm => (u === 'in' ? inToMm(1 / 8) : 1);
 
@@ -22,6 +23,7 @@ export function WallEditor({ wallId, layoutId }: { wallId: string; layoutId?: st
   const ed = useEditor();
   const allPieces = useLiveQuery(listPieces);
   const [sheet, setSheet] = useState(false);
+  const [suggest, setSuggest] = useState(false);
   const fitRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
@@ -226,6 +228,7 @@ export function WallEditor({ wallId, layoutId }: { wallId: string; layoutId?: st
               <button className="primary" onClick={() => setSheet(true)}>
                 Add art
               </button>
+              <button onClick={() => setSuggest(true)}>Suggest</button>
               <a className="button" href={`#/walls/${wall.id}/guide/${layout.id}`}>
                 Hang guide
               </a>
@@ -241,11 +244,30 @@ export function WallEditor({ wallId, layoutId }: { wallId: string; layoutId?: st
                 <a href={`#/walls/${wall.id}/calibrate`}>Calibration</a>
               </span>
             </div>
-            {!placements.length && <p className="hint">Tap “Add art” to place pieces from your library at their real size.</p>}
+            {!placements.length && <p className="hint">Tap “Add art” to place pieces yourself, or “Suggest” for ideas that fit this wall.</p>}
           </div>
         )}
       </div>
 
+      {suggest && (
+        <SuggestSheet
+          wall={wall}
+          placements={placements}
+          pieces={allPieces}
+          onApply={(ps) => {
+            ed.apply(() => ps);
+            ed.select(null);
+            setSuggest(false);
+          }}
+          onSaveAsNew={(ps, name) => {
+            const now = Date.now();
+            const l = { id: newId(), name, placements: ps, createdAt: now, updatedAt: now };
+            ed.setLayouts([...wall.layouts, l], l.id);
+            setSuggest(false);
+          }}
+          onClose={() => setSuggest(false)}
+        />
+      )}
       {sheet && <AddSheet wall={wall} pieces={allPieces} onWall={onWall} units={units} onAdd={add} onClose={() => setSheet(false)} />}
     </div>
   );
