@@ -239,3 +239,23 @@ Deviations from the spec (`docs/SPEC.md`), and choices the spec left open. Newes
 - **UI:** editor → **Suggest**: Mix from my art / Rearrange these, style chips, 6 previews
   (`WallPreview`, an SVG of the wall photo plus thumbnails), Shuffle. Tapping a preview applies it
   as one undoable step; "Save as new layout" keeps the current one.
+
+## Add a wall, redesigned (3 screens, "tap something you know")
+
+- **Flow:** photo (level camera or choose) → **Size it** → **Done** (name defaults to "Wall N"; room
+  chips). Was 4 steps with manual dot-dragging. Opens straight into the editor.
+- **Size it** reuses Scan art's interaction: detected rectangles are outlined; tap one → "I know its
+  size" → shared `ReferencePicker` with presets: doors (30/32/36 × 80 in, or 70/80/90 × 200 cm in
+  metric), light-switch plate, Letter, A4. "Draw a box" adds a rectangle by hand; "Measure a line
+  instead" is the old two-dot method (the default when nothing is detected).
+- **Both sides known → spec §5.5 "fix angle":** `cv.getPerspectiveTransform` from the rectangle to
+  its true size, then the photo is re-warped face-on (`planRectify`: preserves the pixel count,
+  prefers a crop without empty corners). Calibration `method: 'rect'`, quality **Good**,
+  `homography` stored. One side → uniform scale, graded like a single measurement.
+- **Floor line suggested** (`suggestFloorLine`: `HoughLinesP`, longest near-horizontal edges in
+  the lower 55%) and shown dashed with "Is the green line the floor? Yes / No"; draggable.
+- **A door used as the reference becomes a keep-out** ("Door · no art") for suggestions.
+- **Wall edges no longer a required step:** they default to the whole photo. The old wizard
+  (several measurement lines, edges, ceiling) remains as **Edges & measurements** in the wall
+  menu (`#/walls/:id/advanced`). **Re-measure** (`#/walls/:id/calibrate`) runs the new flow on the
+  wall's current photo; placements keep their real positions.

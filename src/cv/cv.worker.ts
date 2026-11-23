@@ -5,7 +5,7 @@
 // Must stay the first import: it hooks the console before OpenCV loads.
 import './worker-console.ts';
 import cvModule from '@techstark/opencv-js';
-import { detectQuads, perspectiveTransform, rectifyQuad, warpImage } from './detect.ts';
+import { detectQuads, perspectiveTransform, rectifyQuad, suggestFloorLine, warpImage } from './detect.ts';
 import { whenCvReady } from './load.ts';
 import type { Request, Response } from './protocol.ts';
 import type { RGBAImage } from './types.ts';
@@ -51,6 +51,9 @@ self.onmessage = async (e: MessageEvent<Request>) => {
         break;
       case 'perspective':
         result = perspectiveTransform(cv, req.payload.src, req.payload.dst);
+        break;
+      case 'floorLine':
+        result = suggestFloorLine(cv, req.payload.img);
         break;
     }
     post({ id: req.id, ok: true, result, ms: Math.round(performance.now() - start) }, transferOf(result));

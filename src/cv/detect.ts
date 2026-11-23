@@ -307,3 +307,48 @@ export function rectifyQuad(cv: CV, img: RGBAImage, quad: Quad, outW: number, ou
   const H = perspectiveTransform(cv, quad, [[0, 0], [outW, 0], [outW, outH], [0, outH]]);
   return warpImage(cv, img, H, outW, outH);
 }
+
+/** Long edge of the image used for floor-line detection. */
+const FLOOR_MAX_PX = 1000;
+
+/**
+ * Suggest where the floor meets the wall in a levelled wall photo: the
+ * strongest long, near-horizontal edge in the lower part of the image
+ * (skirting bottom, floor/wall boundary). Returns y in input pixels, or null.
+ */
+export function suggestFloorLine(cv: CV, img: RGBAImage): number | null {
+  const src = cv.matFromImageData(img);
+  const small = new cv.Mat();
+  const gray = new cv.Mat();
+  const edges = new cv.Mat();
+  const lines = new cv.Mat();
+  try {
+    const k = Math.min(1, FLOOR_MAX_PX / Math.max(img.width, img.height));
+    const W = Math.round(img.width * k), H = Math.round(img.height * k);
+    cv.resize(src, small, new cv.Size(W, H), 0, 0, cv.INTER_AREA);
+    cv.cvtColor(small, gray, cv.COLOR_RGBA2GRAY);
+    cv.GaussianBlur(gray, gray, new cv.Size(5, 5), 0);
+    cv.Canny(gray, edges, 40, 120);
+    cv.HoughLinesP(edges, lines, 1, Math.PI / 180, 60, W * 0.2, 15);
+    // Sum the length of near-horizontal segments per 4 px band, in the lower 55%.
+    const band = 4;
+    const score = new Map<number, number>();
+    const d: Int32Array = lines.data32S;
+    for (let i = 0; i < lines.rows; i++) {
+      const [x1, y1, x2, y2] = [d[i * 4]!, d[i * 4 + 1]!, d[i * 4 + 2]!, d[i * 4 + 3]!];
+      const len = Math.hypot(x2 - x1, y2 - y1);
+      const angle = (Math.abs(Math.atan2(y2 - y1, x2 - x1)) * 180) / Math.PI;
+      if (Math.min(angle, 180 - angle) > 4) continue;
+      const y = (y1 + y2) / 2;
+      if (y < H * 0.45 || y > H * 0.985) continue;
+      const b = Math.round(y / band);
+      score.set(b, (score.get(b) ?? 0) + len);
+    }
+    let best: [number, number] | null = null;
+    for (const [b, s] of score) if (!best || s > best[1] || (s === best[1] && b > best[0])) best = [b, s];
+    if (!best || best[1] < W * 0.3) return null;
+    return (best[0] * band) / k;
+  } finally {
+    [src, small, gray, edges, lines].forEach((m) => m.delete());
+  }
+}

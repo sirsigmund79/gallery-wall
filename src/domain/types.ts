@@ -84,6 +84,8 @@ export interface Wall {
   id: string;
   name: string;
   photo: { original: BlobRef; rectified: BlobRef; widthPx: number; heightPx: number };
+  /** Room the wall belongs to (e.g. "Living room"); walls are grouped by it. */
+  room?: string;
   /** Small preview for lists. */
   thumb?: BlobRef;
   /** How the photo was captured; affects calibration quality with one measurement. */

@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { WALL, addPiece, dragHandle, wallPhotoPng } from './fixtures.ts';
+import { addPiece, addWallWithDoor } from './fixtures.ts';
 
 test.use({ locale: 'en-US', hasTouch: false, isMobile: false });
 
@@ -8,17 +8,7 @@ test('suggest mixes library art into layouts that fit; apply, undo and shuffle',
   await page.goto('/');
   for (const [n, w, h] of [['A', '16', '20'], ['B', '16', '20'], ['C', '11', '14'], ['D', '11', '14'], ['E', '24', '18']] as const) await addPiece(page, n, w, h);
 
-  // A wall from the synthetic photo, calibrated on the 36 in door.
-  await page.goto('/#/walls/new');
-  await page.locator('input[type=file]:not([capture])').setInputFiles({ name: 'wall.png', mimeType: 'image/png', buffer: await wallPhotoPng(page) });
-  await dragHandle(page, 'Measurement 1 start', WALL.door.x1, 1200);
-  await dragHandle(page, 'Measurement 1 end', WALL.door.x2, 1200);
-  await page.getByLabel('Real length of line #1').fill('36');
-  await page.getByRole('button', { name: 'Next' }).click();
-  await page.getByLabel('Mark the floor line').check();
-  await dragHandle(page, 'Floor line', 800, WALL.floorPx);
-  await page.getByRole('button', { name: 'Next' }).click();
-  await page.getByRole('button', { name: 'Save and start arranging' }).click();
+  await addWallWithDoor(page);
 
   await page.getByRole('button', { name: 'Suggest' }).click();
   const cards = page.getByRole('button', { name: /^Use suggestion/ });
@@ -32,6 +22,7 @@ test('suggest mixes library art into layouts that fit; apply, undo and shuffle',
   // Apply the first suggestion, then check the hang guide lists its pieces.
   const label = (await cards.first().getAttribute('aria-label'))!;
   const count = Number(/, (\d+) piece/.exec(label)![1]);
+  // The door is a no-art zone: no suggestion covers it (checked in unit tests); it's drawn on the wall.
   await cards.first().click();
   const emptyHint = page.getByText(/or “Suggest” for ideas/);
   await expect(emptyHint).toBeHidden();

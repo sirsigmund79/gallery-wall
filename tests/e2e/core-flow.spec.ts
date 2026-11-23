@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { WALL, dragHandle, wallPhotoPng } from './fixtures.ts';
+import { WALL, clickImagePoint, wallPhotoPng } from './fixtures.ts';
 
 test.use({ locale: 'en-US', hasTouch: false, isMobile: false });
 
@@ -23,27 +23,23 @@ test('add art, calibrate a wall from one measurement, place art, read nail posit
   await page.getByRole('button', { name: 'Save' }).click();
   await expect(page.getByText('24 1/2 in × 18 in')).toBeVisible();
 
-  // ── Wall ──
-  await page.getByRole('link', { name: 'Walls' }).click();
-  await page.getByRole('link', { name: 'Add a wall' }).click();
-  const png = await wallPhotoPng(page);
-  await page.locator('input[type=file]:not([capture])').setInputFiles({ name: 'wall.png', mimeType: 'image/png', buffer: png });
-
-  // Measure the 36 in door width.
-  await expect(page.getByRole('slider', { name: 'Measurement 1 start' })).toBeVisible();
-  await dragHandle(page, 'Measurement 1 start', WALL.door.x1, 1200);
-  await dragHandle(page, 'Measurement 1 end', WALL.door.x2, 1200);
-  await page.getByLabel('Real length of line #1').fill('36');
-  await expect(page.locator('.badge')).toContainText('Check'); // imported photo, one measurement
-  // Photo is 4000 × 3200 mm = 157 1/2 × 126 in, give or take drag rounding.
-  await expect(page.getByText(/Photo is 15[67]/)).toBeVisible();
-
-  await page.getByRole('button', { name: 'Next' }).click();
-  await page.getByLabel('Mark the floor line').check();
-  await dragHandle(page, 'Floor line', 800, WALL.floorPx);
-  await page.getByRole('button', { name: 'Next' }).click();
-  await page.getByLabel('4. Name this wall').fill('Hallway');
-  await page.getByRole('button', { name: 'Save and start arranging' }).click();
+  // ── Wall: tap the door, pick its standard size, confirm the floor ──
+  await page.goto('/#/walls/new');
+  await page.locator('input[type=file]').setInputFiles({ name: 'wall.png', mimeType: 'image/png', buffer: await wallPhotoPng(page) });
+  await expect(page.getByText('Tap something you know the size of')).toBeVisible({ timeout: 60_000 });
+  await clickImagePoint(page, (WALL.door.x1 + WALL.door.x2) / 2, (WALL.door.top + WALL.door.bottom) / 2, WALL.widthPx, WALL.heightPx);
+  await page.getByRole('button', { name: 'I know its size' }).click();
+  await page.getByRole('button', { name: 'Door 36 × 80 in' }).click();
+  await expect(page.getByText('Is the green line the floor?')).toBeVisible();
+  await page.getByRole('button', { name: 'Yes' }).click();
+  await page.getByRole('button', { name: 'Continue' }).click();
+  // Both sides known: angle corrected, quality Good. Photo is 4000 × 3200 mm = 157 1/2 × 126 in.
+  await expect(page.locator('.badge')).toContainText('Good', { timeout: 30_000 });
+  // Within 1% (the synthetic door has a 4 px outline, so its edge is ambiguous by ~2 px).
+  await expect(page.getByText(/Photo covers 15[6-9][^×]* in × 12[5-7]/)).toBeVisible();
+  await expect(page.getByLabel('Name')).toHaveValue('Wall 1');
+  await page.getByLabel('Name').fill('Hallway');
+  await page.getByRole('button', { name: 'Start arranging' }).click();
 
   // ── Editor ──
   await expect(page.getByRole('button', { name: 'Add art' })).toBeVisible();

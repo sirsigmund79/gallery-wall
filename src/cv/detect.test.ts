@@ -2,7 +2,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { applyH, invert, type Mat3 } from '../geometry/mat3.ts';
 import { measureQuad, similarityFit, type Quad } from '../geometry/quad.ts';
 import { dist, type Pt } from '../geometry/vec.ts';
-import { detectQuads, perspectiveTransform, rectifyQuad } from './detect.ts';
+import { detectQuads, perspectiveTransform, rectifyQuad, suggestFloorLine } from './detect.ts';
 import { loadCvForTests } from '../../tests/cv.ts';
 import type { CV, RGBAImage } from './types.ts';
 
@@ -193,5 +193,32 @@ describe('perspective helpers', () => {
     const px = (x: number, y: number) => out.data[(y * 400 + x) * 4]!;
     expect(px(200, 250)).toBeGreaterThan(190);
     expect(px(8, 8)).toBeLessThan(70);
+  });
+});
+
+describe('suggestFloorLine', () => {
+  function wallWithFloor(floorY: number | null, seed: number): RGBAImage {
+    const r = rng(seed);
+    const W = 1600, H = 1200;
+    const m = new cv.Mat(H, W, cv.CV_8UC4, new cv.Scalar(210, 205, 195, 255));
+    if (floorY !== null) {
+      cv.rectangle(m, new cv.Point(0, floorY - 60), new cv.Point(W, floorY), new cv.Scalar(245, 245, 242, 255), -1); // skirting
+      cv.rectangle(m, new cv.Point(0, floorY), new cv.Point(W, H), new cv.Scalar(125, 90, 60, 255), -1); // floor
+    }
+    // A framed picture and a door: vertical/horizontal clutter higher up.
+    cv.rectangle(m, new cv.Point(300, 200), new cv.Point(700, 600), new cv.Scalar(30, 30, 30, 255), -1);
+    cv.rectangle(m, new cv.Point(1100, 150), new cv.Point(1450, floorY ?? 1150), new cv.Scalar(250, 250, 250, 255), -1);
+    const data = new Uint8ClampedArray(m.data);
+    m.delete();
+    for (let i = 0; i < data.length; i++) if (i % 4 !== 3) data[i] = data[i]! + Math.round((r() - 0.5) * 10);
+    return { data, width: W, height: H };
+  }
+  it('finds where the skirting meets the floor', () => {
+    const y = suggestFloorLine(cv, wallWithFloor(1020, 1));
+    expect(y).not.toBeNull();
+    expect(Math.abs(y! - 1020)).toBeLessThan(8);
+  });
+  it('returns null when there is no floor in view', () => {
+    expect(suggestFloorLine(cv, wallWithFloor(null, 2))).toBeNull();
   });
 });

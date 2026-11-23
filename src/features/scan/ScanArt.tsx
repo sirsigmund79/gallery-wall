@@ -20,6 +20,7 @@ import { ErrorDetails } from '../../ui/ErrorDetails.tsx';
 import { WorkingPanel } from '../../ui/WorkingPanel.tsx';
 import { useSettings } from '../../state/settings.ts';
 import { LengthInput } from '../../ui/LengthInput.tsx';
+import { ReferencePicker } from '../../ui/ReferencePicker.tsx';
 import { PhotoMarkup, type Handle } from '../../ui/PhotoMarkup.tsx';
 import { TopBar } from '../../ui/TopBar.tsx';
 import { calibrationNote, cropSize, defaultQuad, measureAll, orientPreset, planCalibration, type PhotoView, type Reference } from './scanMath.ts';
@@ -444,37 +445,28 @@ export function ScanArt() {
           </div>
 
           {ref && refQuad ? (
-            <fieldset className="card">
-              <legend>★ Size reference: #{refIndex + 1}</legend>
-              <div className="row2">
-                <LengthInput label="Width (across)" unit={units} valueMm={ref.widthMm} onChange={(widthMm) => setRef({ ...ref, widthMm })} />
-                <LengthInput label="Height (up-down)" unit={units} valueMm={ref.heightMm} onChange={(heightMm) => setRef({ ...ref, heightMm })} />
-              </div>
-              <div className="chips" aria-label="Common references">
-                {REF_PRESETS.map((p) => (
-                  <button
-                    key={p.label}
-                    type="button"
-                    className="chip-btn"
-                    onClick={() => {
-                      setRef({ ...ref, ...orientPreset(refQuad, p.a, p.b) });
-                      setRefNotArt(true);
-                    }}
-                  >
-                    {p.label}
-                  </button>
-                ))}
-              </div>
+            <ReferencePicker
+              title={<>★ Size reference: #{refIndex + 1}</>}
+              units={units}
+              widthMm={ref.widthMm}
+              heightMm={ref.heightMm}
+              onChange={(v) => setRef({ ...ref, ...v })}
+              presets={REF_PRESETS}
+              onPreset={(p) => {
+                setRef({ ...ref, ...orientPreset(refQuad, p.a, p.b) });
+                setRefNotArt(true);
+              }}
+              hint={
+                photo.view === 'top-down'
+                  ? 'One side is enough. Both sides is slightly better.'
+                  : 'Enter both sides for the best accuracy, and use the biggest piece you know.'
+              }
+            >
               <label className="check-row">
                 <input type="checkbox" checked={refNotArt} onChange={(e) => setRefNotArt(e.target.checked)} />
                 It’s only a reference (don’t add it to my art)
               </label>
-              <p className="hint">
-                {photo.view === 'top-down'
-                  ? 'One side is enough. Both sides is slightly better.'
-                  : 'Enter both sides for the best accuracy, and use the biggest piece you know.'}
-              </p>
-            </fieldset>
+            </ReferencePicker>
           ) : (
             quads.length > 0 && (
               <p className="hint">

@@ -3,6 +3,7 @@ import { ArtScreen } from '../features/art/ArtScreen.tsx';
 import { PieceEditor } from '../features/art/PieceEditor.tsx';
 import { HangGuide } from '../features/export/HangGuide.tsx';
 import { SettingsScreen } from '../features/settings/SettingsScreen.tsx';
+import { AddWall } from '../features/walls/AddWall.tsx';
 import { WallWizard } from '../features/walls/WallWizard.tsx';
 import { WallsScreen } from '../features/walls/WallsScreen.tsx';
 import { useSettings } from '../state/settings.ts';
@@ -47,8 +48,9 @@ function Screen({ route }: { route: Route }) {
       </Suspense>
     );
   if (route.tab === 'settings') return <SettingsScreen />;
-  if (a === 'new') return <WallWizard key="new" />;
-  if (a && b === 'calibrate') return <WallWizard key={`cal-${a}`} wallId={a} />;
+  if (a === 'new') return <AddWall key="new" />;
+  if (a && b === 'calibrate') return <AddWall key={`cal-${a}`} wallId={a} />;
+  if (a && b === 'advanced') return <WallWizard key={`adv-${a}`} wallId={a} />;
   if (a && b === 'guide') return <HangGuide wallId={a} layoutId={c} />;
   if (a)
     return (
@@ -68,7 +70,7 @@ export function App() {
   }, [load]);
 
   // The editor takes the full screen; everything else scrolls above the tab bar.
-  const fullscreen = route.tab === 'walls' && !!route.rest[0] && route.rest[0] !== 'new' && !['calibrate', 'guide'].includes(route.rest[1] ?? '');
+  const fullscreen = route.tab === 'walls' && !!route.rest[0] && route.rest[0] !== 'new' && !['calibrate', 'advanced', 'guide'].includes(route.rest[1] ?? '');
 
   return (
     <div className="app">

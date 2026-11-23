@@ -51,7 +51,8 @@ export function WallsScreen() {
                 <details className="row-menu">
                   <summary aria-label={`More for ${w.name}`}>⋯</summary>
                   <div>
-                    <a href={`#/walls/${w.id}/calibrate`}>Edit calibration</a>
+                    <a href={`#/walls/${w.id}/calibrate`}>Re-measure</a>
+                    <a href={`#/walls/${w.id}/advanced`}>Edges & measurements</a>
                     <button
                       className="danger"
                       onClick={() => {
