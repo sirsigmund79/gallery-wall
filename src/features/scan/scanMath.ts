@@ -18,15 +18,26 @@ export type CalibrationPlan =
 export const rectOf = (w: Mm, h: Mm): Pt[] => [[0, 0], [w, 0], [w, h], [0, h]];
 
 /**
- * Decide how to map pixels to mm from the reference.
- *  - Both sides known + straightened photo: similarity (scale only; no extrapolation).
- *  - Both sides known + ordinary photo: full perspective from the reference.
- *  - One side known: uniform scale (good on a straightened photo; rough otherwise).
+ * How the scan photo relates to the plane the art is on.
+ *  - top-down: shot looking straight down and straightened by gravity → face-on.
+ *  - wall-level: shot at a wall and straightened by gravity → no tilt, but the
+ *    phone may have been turned a little to one side (yaw), which gravity can't see.
+ *  - unknown: an ordinary photo.
  */
-export function planCalibration(refQuad: Quad, ref: Reference, straightened: boolean): CalibrationPlan | null {
+export type PhotoView = 'top-down' | 'wall-level' | 'unknown';
+
+/**
+ * Decide how to map pixels to mm from the reference.
+ *  - Both sides known + face-on photo: similarity (scale only; no extrapolation).
+ *  - Both sides known otherwise: full perspective from the reference.
+ *  - One side known: uniform scale (good face-on; rough otherwise).
+ */
+export function planCalibration(refQuad: Quad, ref: Reference, view: PhotoView): CalibrationPlan | null {
   const { widthMm: w, heightMm: h } = ref;
   if (w && h) {
-    return straightened ? { kind: 'similarity', H: similarityFit(refQuad, rectOf(w, h)) } : { kind: 'perspective', src: [...refQuad], dst: rectOf(w, h) };
+    return view === 'top-down'
+      ? { kind: 'similarity', H: similarityFit(refQuad, rectOf(w, h)) }
+      : { kind: 'perspective', src: [...refQuad], dst: rectOf(w, h) };
   }
   const [tl, tr, br, bl] = refQuad;
   if (w) return { kind: 'scale', pxPerMm: (dist(tl, tr) + dist(bl, br)) / 2 / w };
@@ -35,13 +46,12 @@ export function planCalibration(refQuad: Quad, ref: Reference, straightened: boo
 }
 
 /** Overall accuracy note for the UI. */
-export function calibrationNote(plan: CalibrationPlan, straightened: boolean): { quality: 'good' | 'check'; text: string } {
-  if (straightened) return { quality: 'good', text: 'Photo straightened with the level sensor.' };
+export function calibrationNote(plan: CalibrationPlan, view: PhotoView): { quality: 'good' | 'check'; text: string } {
+  if (view === 'top-down') return { quality: 'good', text: 'Straightened with the level sensor.' };
   if (plan.kind === 'perspective') return { quality: 'good', text: 'Angle corrected from your reference. Accuracy is best near the reference piece.' };
-  return {
-    quality: 'check',
-    text: 'One side only on an angled photo: sizes may be a few % off. Enter both sides, or use the level camera.',
-  };
+  if (view === 'wall-level')
+    return { quality: 'check', text: 'Levelled with the sensor. If you weren’t square to the wall, sizes may be a few % off: enter both sides of the reference.' };
+  return { quality: 'check', text: 'One side only on an angled photo: sizes may be a few % off. Enter both sides, or use the level camera.' };
 }
 
 export interface MeasuredPiece extends QuadMeasure {

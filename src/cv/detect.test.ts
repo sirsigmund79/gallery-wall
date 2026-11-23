@@ -132,6 +132,46 @@ describe('detectQuads (synthetic floor photo)', () => {
   });
 });
 
+describe('detectQuads (art hanging on a wall)', () => {
+  it('finds framed pieces on a painted wall, ignoring the floor strip along the bottom', () => {
+    // Wall 2400 × 1700 mm with mild side-on perspective (photographer a little to the left).
+    const H = perspectiveTransform(cv, [[0, 0], [2400, 0], [2400, 1700], [0, 1700]], [[60, 70], [1540, 30], [1560, 1180], [40, 1150]]);
+    const wallPieces: Piece[] = [
+      { x: 500, y: 350, w: 609.6, h: 457.2, frame: [25, 25, 25], inner: [235, 230, 220] },
+      { x: 1250, y: 300, w: 406.4, h: 508, frame: [180, 140, 90], inner: [70, 100, 150] },
+      { x: 1250, y: 880, w: 406.4, h: 304.8, frame: [240, 240, 236], inner: [150, 60, 50] },
+    ];
+    const r = rng(5);
+    const W = 1600, Himg = 1200;
+    const m = new cv.Mat(Himg, W, cv.CV_8UC4, new cv.Scalar(205, 200, 188, 255)); // painted wall
+    const poly = (pts: Pt[], c: [number, number, number]) => {
+      const mat = cv.matFromArray(4, 1, cv.CV_32SC2, pts.flatMap((p) => [Math.round(p[0]), Math.round(p[1])]));
+      const v = new cv.MatVector();
+      v.push_back(mat);
+      cv.fillPoly(m, v, new cv.Scalar(c[0], c[1], c[2], 255));
+      v.delete();
+      mat.delete();
+    };
+    const proj = (x: number, y: number, w: number, h: number) => [[x, y], [x + w, y], [x + w, y + h], [x, y + h]].map((p) => applyH(H, p as Pt));
+    // Floor strip and skirting across the bottom of the photo.
+    poly([[0, 1130], [W, 1090], [W, Himg], [0, Himg]], [120, 85, 55]);
+    for (const p of wallPieces) {
+      poly(proj(p.x, p.y, p.w, p.h), p.frame);
+      if (p.inner) {
+        const b = Math.min(p.w, p.h) * 0.12;
+        poly(proj(p.x + b, p.y + b, p.w - 2 * b, p.h - 2 * b), p.inner);
+      }
+    }
+    const data = new Uint8ClampedArray(m.data);
+    m.delete();
+    for (let i = 0; i < data.length; i++) if (i % 4 !== 3) data[i] = data[i]! + Math.round((r() - 0.5) * 12);
+    const found = detectQuads(cv, { data, width: W, height: Himg });
+    const truth = wallPieces.map((p) => proj(p.x, p.y, p.w, p.h) as Quad);
+    for (const t of truth) expect(matchQuad(found, t), `missing piece at ${t[0]}`).toBeDefined();
+    expect(found).toHaveLength(wallPieces.length);
+  });
+});
+
 describe('perspective helpers', () => {
   it('perspectiveTransform maps the four points exactly', () => {
     const H = perspectiveTransform(cv, SRC_MM, DST_PX);

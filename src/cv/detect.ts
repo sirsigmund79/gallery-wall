@@ -139,11 +139,9 @@ export function detectQuads(cv: CV, img: RGBAImage, debug?: DetectDebug): Quad[]
     if (smoothMask(cv, gray, bin)) collect(cv, bin, cands, cv.RETR_EXTERNAL);
 
     // Pass 1: Canny edges, closed so frame outlines become single contours.
-    // Thresholds from the median brightness (auto-Canny).
-    const med = median(blur);
-    const lo = Math.max(10, 0.5 * med);
-    const hi = Math.min(255, Math.max(lo + 20, 1.2 * med));
-    cv.Canny(blur, edges, lo, hi);
+    // Fixed gradient thresholds: brightness-scaled ("auto") thresholds get too
+    // insensitive on bright walls, missing white frames on pale paint.
+    cv.Canny(blur, edges, CANNY_LO, CANNY_HI);
     cv.morphologyEx(edges, edges, cv.MORPH_CLOSE, kernel, new cv.Point(-1, -1), 2);
     collect(cv, edges, cands);
 
@@ -209,9 +207,15 @@ function floorMask(cv: CV, rgba: Mat, out: Mat) {
         if (x >= bw && x < W - bw && y >= bh && y < H - bh) continue;
         borderD.push(dist((y * W + x) * 3));
       }
+    // Robust spread (median + scaled MAD): the border is mostly background, but
+    // may include a strip of floor, skirting or furniture, which must not
+    // inflate the threshold.
     borderD.sort((a, b) => a - b);
-    const p95 = borderD[Math.floor(borderD.length * 0.95)] ?? 0;
-    const thr = Math.max(14, p95 * 1.4);
+    const medD = borderD[borderD.length >> 1] ?? 0;
+    const dev = borderD.map((v) => Math.abs(v - medD)).sort((a, b) => a - b);
+    const mad = dev[dev.length >> 1] ?? 0;
+    const thr = Math.max(14, medD + 6 * 1.4826 * mad);
+    detectStats.colourThreshold = thr;
     out.create(H, W, cv.CV_8UC1);
     const o: Uint8Array = out.data;
     for (let p = 0, i = 0; p < W * H; p++, i += 3) o[p] = dist(i) > thr ? 255 : 0;
@@ -221,6 +225,10 @@ function floorMask(cv: CV, rgba: Mat, out: Mat) {
     [rgb, lab, k].forEach((m) => m.delete());
   }
 }
+
+/** Canny hysteresis thresholds (on the blurred 8-bit image). */
+const CANNY_LO = 25;
+const CANNY_HI = 70;
 
 /** Numbers from the last detection run, for tuning and tests. */
 export const detectStats: Record<string, number> = {};
@@ -268,18 +276,6 @@ function smoothMask(cv: CV, gray: Mat, out: Mat): boolean {
   }
 }
 
-function median(gray: Mat): number {
-  const hist = new Array<number>(256).fill(0);
-  const d: Uint8Array = gray.data;
-  for (let i = 0; i < d.length; i += 7) hist[d[i]!]!++;
-  const total = hist.reduce((a, b) => a + b, 0);
-  let acc = 0;
-  for (let v = 0; v < 256; v++) {
-    acc += hist[v]!;
-    if (acc >= total / 2) return v;
-  }
-  return 128;
-}
 
 /** 3×3 homography mapping four source points onto four destination points (OpenCV). */
 export function perspectiveTransform(cv: CV, src: readonly Pt[], dst: readonly Pt[]): Mat3 {

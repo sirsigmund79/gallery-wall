@@ -27,11 +27,36 @@ test('level guide reacts to tilt, and a level shot is straightened', async ({ pa
   await expect(page.getByRole('button', { name: 'Take photo (not level)' })).toBeVisible();
 
   await tilt(page, 1, -1);
-  await expect(page.getByRole('status')).toHaveText('Level');
+  await expect(page.getByRole('status')).toHaveText('Level · looking down');
+
+  // Raise the phone to face a wall: the guide switches by itself, no option to pick.
+  await tilt(page, 90, 0);
+  await expect(page.getByRole('status')).toHaveText('Level · facing the wall');
+  await tilt(page, 78, 0); // camera pointing 12° down (tolerance is 8°)
+  await expect(page.getByRole('status')).toContainText('Tilt up 12°');
+  // Back down over the floor.
+  await tilt(page, 1, -1);
+  await expect(page.getByRole('status')).toHaveText('Level · looking down');
   await page.getByRole('button', { name: 'Take photo', exact: true }).click();
 
   // Through straightening + detection to the review screen.
   await expect(page.getByText('Straightened with the level sensor.')).toBeVisible({ timeout: 60_000 });
+});
+
+test('a shot of a wall is straightened as a wall photo', async ({ page }) => {
+  test.setTimeout(90_000);
+  await page.goto('/#/art/scan');
+  await page.getByRole('button', { name: 'Use camera with level' }).click();
+  // A phone streams readings continuously; keep sending until the camera listens.
+  await expect(async () => {
+    await tilt(page, 91, 1);
+    await expect(page.getByRole('status')).toHaveText('Level · facing the wall', { timeout: 500 });
+  }).toPass({ timeout: 10_000 });
+  await page.getByRole('button', { name: 'Take photo', exact: true }).click();
+  await expect(page.getByText('Straightened with the level sensor.')).toBeVisible({ timeout: 60_000 });
+  await page.goto('/#/settings/diagnostics');
+  await expect(page.locator('.log').last()).toContainText('pointing at a wall');
+  await expect(page.locator('.log').last()).toContainText('view wall-level');
 });
 
 test('sensor check shows camera-frame gravity', async ({ page }) => {

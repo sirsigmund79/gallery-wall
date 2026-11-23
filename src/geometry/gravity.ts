@@ -182,3 +182,20 @@ export function planWarpInner(H: Mat3, w: number, h: number): WarpPlan | null {
   if (width < w * 0.5 || height < h * 0.5) return null;
   return { H: mul(translation(-Math.ceil(x0), -Math.ceil(y0)), full.H), width, height };
 }
+
+/** Pointing within this angle of straight down → floor (art laid flat). */
+export const AUTO_FLOOR_ENTER_DEG = 40;
+/** Pointing more than this from straight down → wall. Between the two, keep the current mode. */
+export const AUTO_WALL_ENTER_DEG = 50;
+
+/**
+ * Pick wall or floor mode from how the camera is pointing, with hysteresis so
+ * the level guide doesn't flicker while the phone is being raised or lowered.
+ * Nobody has to choose "wall" or "floor": the phone's attitude says which.
+ */
+export function autoMode(g: Vec3, prev: RectifyMode | null): RectifyMode {
+  const fromDown = floorTilt(g).tiltDeg;
+  if (fromDown <= AUTO_FLOOR_ENTER_DEG) return 'floor';
+  if (fromDown >= AUTO_WALL_ENTER_DEG) return 'wall';
+  return prev ?? (fromDown < (AUTO_FLOOR_ENTER_DEG + AUTO_WALL_ENTER_DEG) / 2 ? 'floor' : 'wall');
+}

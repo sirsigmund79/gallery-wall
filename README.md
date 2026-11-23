@@ -22,7 +22,8 @@ Dependency licenses: [`THIRD_PARTY.md`](THIRD_PARTY.md).
 
 ### What you can do today
 
-1. **Art → Scan art:** lay pieces on the floor, photograph them with the level camera, tap one you
+1. **Art → Scan art:** photograph art laid on the floor *or* already hanging on a wall (the level
+   guide switches by itself to match how you hold the phone), tap one you
    know the size of (or a sheet of paper or a card in the photo) and enter it. Every piece is
    measured, cropped and straightened. Or **Add by hand** with a typed size.
 2. **Walls → Add a wall:** use the level camera (straightens the photo), or choose a photo, drag the red line over something you know the

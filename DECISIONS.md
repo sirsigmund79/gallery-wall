@@ -184,3 +184,28 @@ Deviations from the spec (`docs/SPEC.md`), and choices the spec left open. Newes
   - Progress screens show the step and elapsed seconds; after 12 s they show the recent log and a
     **Cancel** button. Errors show **Copy details**.
   - Scans now work at **2400 px** (was 3000) to reduce the worker's peak memory.
+
+## One camera for art on the floor *and* on a wall (automatic level mode)
+
+- **No "wall or floor?" choice.** The guided camera's `mode="auto"` (used by Scan art) decides from
+  the phone's attitude: camera axis within **40°** of straight down → *floor* (bubble level, ±5°);
+  more than **50°** from down → *wall* (horizon line, ±3° roll / ±8° pitch). Between 40° and 50°
+  it keeps the current mode, so the overlay doesn't flicker while the phone is raised
+  (`autoMode`, unit-tested: raising and lowering switches exactly once each way). The tip text and
+  readout ("Level · looking down" / "Level · facing the wall") follow the mode. The mode is decided
+  again from the reading captured with the shot, and the photo is straightened in that mode.
+  Add a wall keeps a fixed wall mode.
+- **Measuring depends on how the photo was taken** (`PhotoView`):
+  - *top-down* (floor, straightened): face-on, so a similarity fit to the reference, and one side is
+    enough.
+  - *wall-level* (wall, straightened): tilt is removed, but gravity can't see yaw (standing a little
+    to one side), so both sides of the reference use a perspective fit, and one side is flagged
+    **Check**.
+  - *unknown* (ordinary photo): as before.
+- **Detection tuned for walls** (new synthetic test: painted wall, floor strip along the bottom,
+  side-on perspective, light frames on pale paint):
+  - The colour threshold now uses median + 6·MAD of border distances instead of the 95th percentile,
+    so a strip of floor or furniture along the border doesn't inflate it.
+  - Canny uses fixed thresholds (25/70) instead of brightness-scaled ones, which went deaf on
+    bright walls.
+  - Wall photos will also find doors, windows and the like; "Not a piece" removes them.

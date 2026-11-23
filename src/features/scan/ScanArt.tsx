@@ -21,7 +21,7 @@ import { useSettings } from '../../state/settings.ts';
 import { LengthInput } from '../../ui/LengthInput.tsx';
 import { PhotoMarkup, type Handle } from '../../ui/PhotoMarkup.tsx';
 import { TopBar } from '../../ui/TopBar.tsx';
-import { calibrationNote, cropSize, defaultQuad, measureAll, orientPreset, planCalibration, type Reference } from './scanMath.ts';
+import { calibrationNote, cropSize, defaultQuad, measureAll, orientPreset, planCalibration, type PhotoView, type Reference } from './scanMath.ts';
 
 type Step = 'start' | 'camera' | 'working' | 'review' | 'results';
 
@@ -35,7 +35,7 @@ interface Photo {
   img: RGBAImage;
   url: string;
   el: HTMLImageElement;
-  straightened: boolean;
+  view: PhotoView;
 }
 
 interface QItem {
@@ -120,7 +120,7 @@ export function ScanArt() {
 
   // ── Calibration (pixels → mm) from the reference ──
   const refQuad = ref ? quads.find((q) => q.id === ref.quadId)?.quad : undefined;
-  const plan = useMemo(() => (ref && refQuad && photo ? planCalibration(refQuad, ref, photo.straightened) : null), [ref, refQuad, photo]);
+  const plan = useMemo(() => (ref && refQuad && photo ? planCalibration(refQuad, ref, photo.view) : null), [ref, refQuad, photo]);
   const perspKey = plan?.kind === 'perspective' ? JSON.stringify([plan.src, plan.dst]) : '';
   useEffect(() => {
     if (plan?.kind !== 'perspective') return;
@@ -156,7 +156,7 @@ export function ScanArt() {
     setStep('start');
   }
 
-  async function process(get: () => Promise<{ img: RGBAImage; blob: Blob; straightened: boolean }>) {
+  async function process(get: () => Promise<{ img: RGBAImage; blob: Blob; view: PhotoView }>) {
     const me = ++run.current;
     setStep('working');
     setError(undefined);
@@ -164,8 +164,8 @@ export function ScanArt() {
     try {
       setStatus('Preparing photo…');
       info('Scan: preparing photo');
-      const { img, blob, straightened } = await get();
-      info(`Scan: photo ready ${img.width}×${img.height}${straightened ? ', straightened' : ''} (${Math.round(performance.now() - t0)} ms)`);
+      const { img, blob, view } = await get();
+      info(`Scan: photo ready ${img.width}×${img.height}, view ${view} (${Math.round(performance.now() - t0)} ms)`);
       if (me !== run.current) return;
       const url = track(URL.createObjectURL(blob));
       const el = await loadImageEl(url);
@@ -174,7 +174,7 @@ export function ScanArt() {
       const found = await cvCall('detect', { img: copy }, [copy.data.buffer]);
       if (me !== run.current) return;
       info(`Scan: found ${found.length} shape(s) (${Math.round(performance.now() - t0)} ms total)`);
-      setPhoto({ img, url, el, straightened });
+      setPhoto({ img, url, el, view });
       const items = found.map((quad) => ({ id: newId(), quad }));
       setQuads(items);
       setSelected(null);
@@ -190,9 +190,10 @@ export function ScanArt() {
 
   const fromShot = (shot: GuidedShot) =>
     process(async () => {
-      info(`Scan: camera shot ${shot.width}×${shot.height}, gravity ${shot.gravity ? 'yes' : 'no'}`);
-      const s = await straighten(shot.blob, shot.gravity?.g ?? null, 'floor', SCAN_MAX_PX);
-      return { img: s.img, blob: s.blob, straightened: s.corrected };
+      info(`Scan: camera shot ${shot.width}×${shot.height}, gravity ${shot.gravity ? 'yes' : 'no'}, pointing ${shot.mode === 'floor' ? 'down' : 'at a wall'}`);
+      const s = await straighten(shot.blob, shot.gravity?.g ?? null, shot.mode, SCAN_MAX_PX);
+      const view: PhotoView = !s.corrected ? 'unknown' : shot.mode === 'floor' ? 'top-down' : 'wall-level';
+      return { img: s.img, blob: s.blob, view };
     });
 
   const fromFile = (file: File | undefined) =>
@@ -200,7 +201,7 @@ export function ScanArt() {
     process(async () => {
       info(`Scan: file ${file.type || 'unknown type'}, ${Math.round(file.size / 1024)} KB`);
       const img = await blobToRGBA(file, SCAN_MAX_PX);
-      return { img, blob: await rgbaToBlob(img, 0.92), straightened: false };
+      return { img, blob: await rgbaToBlob(img, 0.92), view: 'unknown' as const };
     });
 
   async function openCamera() {
@@ -301,7 +302,7 @@ export function ScanArt() {
   if (step === 'camera') {
     return (
       <GuidedCamera
-        mode="floor"
+        mode="auto"
         motion={motion}
         onCapture={(s) => void fromShot(s)}
         onCancel={() => setStep('start')}
@@ -323,10 +324,14 @@ export function ScanArt() {
           <div className="card">
             <h2>Photograph several pieces at once</h2>
             <ul className="tips">
-              <li>Lay the art flat on the floor, with a little floor showing between pieces.</li>
-              <li>A plain floor that contrasts with the frames works best.</li>
+              <li>
+                <strong>Art on the floor:</strong> lay it flat with a little floor between pieces, and hold the phone flat above it.
+              </li>
+              <li>
+                <strong>Art on a wall:</strong> stand square to the wall with the phone upright.
+              </li>
+              <li>The level guide switches by itself depending on how you hold the phone.</li>
               <li>Include one piece you know the size of, or a sheet of paper or a credit card.</li>
-              <li>Hold the phone flat above them. The level guide shows when it’s straight.</li>
             </ul>
             <div className="actions">
               <button className="primary" onClick={() => void openCamera()}>
@@ -347,7 +352,7 @@ export function ScanArt() {
   if (step === 'review' && photo) {
     const sel = quads.find((q) => q.id === selected);
     const handles: Handle[] = sel ? sel.quad.map((p, i) => ({ id: `${sel.id}:${i}`, at: p, color: '#0a84ff', label: `Corner ${i + 1}` })) : [];
-    const note = plan ? calibrationNote(plan, photo.straightened) : null;
+    const note = plan ? calibrationNote(plan, photo.view) : null;
     const refIndex = ref ? quads.findIndex((q) => q.id === ref.quadId) : -1;
     const artCount = quads.length - (refNotArt && ref ? 1 : 0);
 
@@ -362,7 +367,7 @@ export function ScanArt() {
           ) : (
             'No pieces found automatically. Add them by hand below.'
           )}
-          {photo.straightened && <span className="muted"> Straightened with the level sensor.</span>}
+          {photo.view !== 'unknown' && <span className="muted"> Straightened with the level sensor.</span>}
         </p>
         <PhotoMarkup
           image={photo.el}
@@ -463,7 +468,7 @@ export function ScanArt() {
                 It’s only a reference (don’t add it to my art)
               </label>
               <p className="hint">
-                {photo.straightened
+                {photo.view === 'top-down'
                   ? 'One side is enough. Both sides is slightly better.'
                   : 'Enter both sides for the best accuracy, and use the biggest piece you know.'}
               </p>

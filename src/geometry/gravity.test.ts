@@ -137,3 +137,33 @@ describe('planWarpInner', () => {
     }
   });
 });
+
+describe('autoMode', () => {
+  it('flat over the floor → floor; upright at a wall → wall', async () => {
+    const { autoMode } = await import('./gravity.ts');
+    expect(autoMode(gravityCamera(0, 0), null)).toBe('floor');
+    expect(autoMode(gravityCamera(8, -4), null)).toBe('floor');
+    expect(autoMode(gravityCamera(90, 0), null)).toBe('wall');
+    expect(autoMode(gravityCamera(75, 3), null)).toBe('wall');
+    // Landscape upright is still a wall.
+    expect(autoMode(gravityCamera(0, 90, 90), null)).toBe('wall');
+  });
+  it('keeps the current mode in the 40–50° band (no flicker)', async () => {
+    const { autoMode } = await import('./gravity.ts');
+    const g45 = gravityCamera(45, 0);
+    expect(autoMode(g45, 'floor')).toBe('floor');
+    expect(autoMode(g45, 'wall')).toBe('wall');
+    // Raising the phone from flat to upright switches exactly once.
+    let mode = autoMode(gravityCamera(0, 0), null);
+    const seen = [mode];
+    for (let b = 0; b <= 90; b += 2) {
+      mode = autoMode(gravityCamera(b, 0), mode);
+      if (mode !== seen[seen.length - 1]) seen.push(mode);
+    }
+    for (let b = 90; b >= 0; b -= 2) {
+      mode = autoMode(gravityCamera(b, 0), mode);
+      if (mode !== seen[seen.length - 1]) seen.push(mode);
+    }
+    expect(seen).toEqual(['floor', 'wall', 'floor']);
+  });
+});
