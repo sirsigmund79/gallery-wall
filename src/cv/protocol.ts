@@ -1,0 +1,15 @@
+import type { Mat3 } from '../geometry/mat3.ts';
+import type { Quad } from '../geometry/quad.ts';
+import type { Pt } from '../geometry/vec.ts';
+import type { RGBAImage } from './types.ts';
+
+export interface Ops {
+  detect: { req: { img: RGBAImage }; res: Quad[] };
+  warp: { req: { img: RGBAImage; H: Mat3; width: number; height: number }; res: RGBAImage };
+  crops: { req: { img: RGBAImage; items: { quad: Quad; width: number; height: number }[] }; res: RGBAImage[] };
+  perspective: { req: { src: Pt[]; dst: Pt[] }; res: Mat3 };
+}
+export type Op = keyof Ops;
+
+export type Request = { [K in Op]: { id: number; op: K; payload: Ops[K]['req'] } }[Op];
+export type Response = { id: number; ok: true; result: unknown } | { id: number; ok: false; error: string };

@@ -34,6 +34,12 @@ export function SettingsScreen() {
         </p>
       </fieldset>
       <div className="card">
+        <h2>Camera</h2>
+        <p className="hint">
+          <a href="#/settings/sensors">Sensor check</a>: confirm the level guide reads your phone correctly.
+        </p>
+      </div>
+      <div className="card">
         <h2>About</h2>
         <p className="hint">
           HangPlan is local-first: your photos and measurements stay on this device. No account, no

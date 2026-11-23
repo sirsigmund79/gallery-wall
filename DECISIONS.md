@@ -83,3 +83,82 @@ Deviations from the spec (`docs/SPEC.md`), and choices the spec left open. Newes
 - **E2E:** Playwright pinned to the version of the browsers pre-installed in the dev container.
   The synthetic wall photo is drawn in the browser by the test, so no image fixture is committed.
   WebKit runs in CI only (not installed in the dev container).
+
+## M4 (art from photo) + guided capture
+
+### M0.5 spike #2 (OpenCV.js), done in the dev container. Go.
+- **Package: `@techstark/opencv-js@4.12.0-release.1`** (Apache-2.0; OpenCV itself is Apache-2.0).
+  5.0.0 exists but is newer and less proven; revisit later.
+- **Exposes everything we need:** `getPerspectiveTransform`, `warpPerspective`, **`findHomography`**
+  (the spec was unsure), `Canny`, `findContours`, `approxPolyDP`, `minAreaRect`,
+  `adaptiveThreshold`, `morphologyEx`, `Laplacian`, `boxFilter`. No custom build needed.
+- **Size:** 10.8 MB raw, **3.5 MB gzipped** (WASM inlined as base64). WASM init ~0.2 s in Node.
+  Real-phone load time is still to be measured.
+- **Gotcha:** the module object has a `then` method (Emscripten). `await import()` and Vitest's
+  module loader both hang on it. The worker imports it statically and waits for
+  `onRuntimeInitialized`; tests load it with Node's `require` (`tests/cv.ts`).
+- **Delivery:** it runs in a module Web Worker (`src/cv/cv.worker.ts`), which becomes its own
+  10.8 MB chunk, downloaded the first time a CV feature is used. It's excluded from the service
+  worker's precache (so other users don't pay for it) and cached on first use with a CacheFirst
+  runtime rule, so it works offline after that. Single-threaded build, so no COOP/COEP needed.
+
+### M0.5 spike #3 (quads): partially done
+- `jscanify` / `opencv-document-scanner` find one sheet (largest contour). We **adapted the approach**
+  (edges → contours → `approxPolyDP`) and **extended** it for many pieces. No code copied.
+- **Passes:** (0) colour distance from the floor (floor colour sampled along the photo's border, in
+  Lab, lightness down-weighted); (0b) on textured floors only, regions much smoother than the floor;
+  (1) auto-Canny + close; (2) Otsu both polarities. Contours → 4-point `approxPolyDP`, or
+  `minAreaRect` when the contour is ≥ 88% rectangular. Slivers (min side < 3% of the image, aspect
+  > 6:1) are rejected.
+- **Every candidate is refined to sub-pixel edges** at full resolution (`src/cv/refine.ts`, pure TS):
+  a wide step detector along each side's normal, polarity voting, interior peaks only, robust line
+  fit, corner intersection. Its *edge support* (share of samples on the fitted line) is added to the
+  candidate's score, so duplicates from different passes converge and the best-supported one wins;
+  then nested quads (mats, prints inside frames) are dropped.
+- **Synthetic results (Node tests):** all pieces found, including a wood frame on a wood floor and
+  nothing on an empty floor; corners within ~1 px; sizes within 0.5% on a straight-down photo.
+- **Known weak case:** a frame the *same colour as the floor's grain* is found, but an edge running
+  parallel to the grain can snap to a grain line (≈1% error in the browser fixture). The user can
+  drag the corner, and snap suggestions still catch it.
+- **Still needed:** the spec's real-photo run (5 floor photos, several pieces each, on real phones).
+
+### Measuring
+- **Reference = a piece (or a sheet of paper / a card) whose size you know.** Presets for US Letter,
+  A4 and credit card fill both sides and default to "only a reference, not art".
+- **Calibration depends on the photo:**
+  - *Straightened by gravity* (level camera): a least-squares **similarity** (scale + rotation) to the
+    reference. No perspective is fitted, so corner errors aren't amplified far from the reference.
+    One side is enough.
+  - *Ordinary photo, both sides known:* full **perspective** from the reference
+    (`cv.getPerspectiveTransform`, per spec). Error grows with distance from the reference; the UI
+    recommends the biggest piece you know. Test bound: 1.5% for a small A4 reference far from some
+    pieces.
+  - *Ordinary photo, one side known:* uniform scale, flagged **Check** in the UI.
+- **Sizes:** mean of opposite edges in mm; confidence per spec (high ≤ 2% / 3°, check ≤ 5%; we use
+  6° for "check" angles, since the spec gives no angle for that tier); snap suggestions to common
+  in/A/cm sizes within 1.5%.
+- **Crops** are warped to the measured aspect, long edge ≤ 1600 px and never upsampled past the
+  source. A "Rotate 90°" button handles pieces laid sideways.
+- **`sourcePhoto` is not stored** on scanned pieces: one photo would be shared by several pieces, and
+  deleting one piece deletes its blobs.
+
+### Guided capture (gyro)
+- **`src/geometry/gravity.ts` implements §5.2 as specified** (`H = K·Rᵀ·K⁻¹`), in wall mode (level
+  verticals; keeps yaw) and floor mode (virtual camera straight down). Tests render a synthetic grid
+  through known rotations and check it comes out axis-aligned (200 random pitch/roll cases).
+- **Smoothing:** the mean of the last 8 gravity *vectors* (not Euler angles, which jump near upright).
+- **Screen rotation:** device frame → screen frame by `screen.orientation.angle`, then to camera.
+  Getting this right needs real-device verification. The **Sensor check** screen
+  (Settings → Camera) shows β, γ, g and the tilt readouts, with the expected values for flat/upright.
+- **Focal length:** the spec's diagonal formula, applied to a 4:3 frame of the image's long edge, so
+  16:9 video frames get the same focal length as the 4:3 sensor.
+- **Output is cropped to the inside of the warped image** (`planWarpInner`): empty corners would look
+  like objects to detection and spoil floor-colour sampling. Corrections over 15° are skipped.
+- **Capture is highlighted (green) when level, but always allowed** (the spec allows "enabled or
+  highlighted"). Sensors missing or denied → a plain camera with a note.
+- **Chromium now has `DeviceOrientationEvent.requestPermission()` too** (found in testing). The same
+  code path as iOS handles it.
+- **Frames come from the `<video>` element** (`getUserMedia`, ideal 4096×3072). `ImageCapture.takePhoto()`
+  could give full resolution on Android Chrome; not used yet.
+- **Walls:** "Use camera with level" is now the primary option. Its photos are straightened, recorded as
+  `capture: 'guided'` with the gravity values, and one measurement grades **Good** (spec §5.4).

@@ -13,7 +13,8 @@
     "jsx": "react-jsx",
     "types": [
       "vite/client",
-      "vite-plugin-pwa/client"
+      "vite-plugin-pwa/client",
+      "node"
     ],
     "strict": true,
     "noUncheckedIndexedAccess": true,
@@ -31,6 +32,7 @@
   "include": [
     "src",
     "tests/setup.ts",
-    "tests/unit"
+    "tests/unit",
+    "tests/cv.ts"
   ]
 }

@@ -6,7 +6,10 @@ import type { CalibrationRecord, Mm, Wall } from '../../domain/types.ts';
 import { accuracyPct, axisScales, fitCalibration, type CalibrationFit } from '../../geometry/calibration.ts';
 import { formatLength } from '../../geometry/units.ts';
 import { dist, type Pt } from '../../geometry/vec.ts';
-import { importPhoto } from '../../media/image.ts';
+import { importPhoto, resizeToBlob, THUMB_MAX_PX } from '../../media/image.ts';
+import { GuidedCamera, type GuidedShot } from '../../capture/GuidedCamera.tsx';
+import { requestMotionPermission, type MotionPermission } from '../../capture/sensors.ts';
+import { DEFAULT_F35_MM } from '../../geometry/gravity.ts';
 import { useBlobImage } from '../../media/useBlobUrl.ts';
 import { useSettings } from '../../state/settings.ts';
 import { LengthInput } from '../../ui/LengthInput.tsx';
@@ -15,7 +18,7 @@ import { QualityBadge } from '../../ui/QualityBadge.tsx';
 import { TopBar } from '../../ui/TopBar.tsx';
 import { LENGTH_PRESETS } from './presets.ts';
 
-type Step = 'photo' | 'measure' | 'bounds' | 'name';
+type Step = 'photo' | 'camera' | 'measure' | 'bounds' | 'name';
 
 interface MLine {
   id: string;
@@ -61,6 +64,9 @@ export function WallWizard({ wallId }: { wallId?: string }) {
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
+  const [motion, setMotion] = useState<MotionPermission>('unavailable');
+  /** How the current photo was captured (guided = straightened with gravity). */
+  const [capture, setCapture] = useState<{ kind: 'guided' | 'import'; gravity?: CalibrationRecord['gravity'] }>({ kind: 'import' });
   const image = useBlobImage(photo?.edit);
 
   // Editing calibration of an existing wall: load its state in image px.
@@ -83,6 +89,7 @@ export function WallWizard({ wallId }: { wallId?: string }) {
         ceilingY: w.datums.ceilingY !== undefined ? w.datums.ceilingY * sy : undefined,
       });
       setName(w.name);
+      setCapture({ kind: w.capture ?? 'import', gravity: w.calibration.gravity });
     });
   }, [wallId]);
 
@@ -90,9 +97,9 @@ export function WallWizard({ wallId }: { wallId?: string }) {
     () =>
       fitCalibration(
         lines.filter((l) => l.lengthMm).map((l) => ({ p: l.p, q: l.q, lengthMm: l.lengthMm! })),
-        { guided: existing?.capture === 'guided' },
+        { guided: capture.kind === 'guided' },
       ),
-    [lines, existing],
+    [lines, capture],
   );
 
   async function onFile(file: File | undefined) {
@@ -102,20 +109,55 @@ export function WallWizard({ wallId }: { wallId?: string }) {
     try {
       const ph = await importPhoto(file);
       const [original, edit, thumb] = await Promise.all([putBlob(ph.original.blob), putBlob(ph.edit.blob), putBlob(ph.thumb.blob)]);
-      if (photo && !existing) await deleteBlobs([photo.original, photo.edit, photo.thumb]);
-      const w = ph.edit.width;
-      const h = ph.edit.height;
-      setPhoto({ original, edit, thumb, w, h });
-      const first = defaultLine(w, h, 0);
-      setLines([first]);
-      setActive(first.id);
-      setBounds({ left: 0, top: 0, right: w, bottom: h });
-      setStep('measure');
+      setCapture({ kind: 'import' });
+      adoptPhoto({ original, edit, thumb, w: ph.edit.width, h: ph.edit.height });
     } catch {
       setError('That photo could not be read. Try a JPEG or PNG.');
     } finally {
       setBusy(false);
     }
+  }
+
+  async function onGuided(shot: GuidedShot) {
+    setStep('photo');
+    setBusy(true);
+    setError(undefined);
+    try {
+      // Straighten with gravity (spec §5.2). Loads the image tools on first use.
+      const { straighten } = await import('../../capture/straighten.ts');
+      const s = await straighten(shot.blob, shot.gravity?.g ?? null, 'wall');
+      const bmp = await createImageBitmap(s.blob);
+      const thumbBlob = (await resizeToBlob(bmp, THUMB_MAX_PX, 0.8)).blob;
+      bmp.close();
+      const [original, edit, thumb] = await Promise.all([putBlob(shot.blob), putBlob(s.blob), putBlob(thumbBlob)]);
+      setCapture(
+        s.corrected && shot.gravity
+          ? { kind: 'guided', gravity: { betaDeg: shot.gravity.betaDeg, gammaDeg: shot.gravity.gammaDeg, f35mm: DEFAULT_F35_MM, fSource: 'default' } }
+          : { kind: 'import' },
+      );
+      adoptPhoto({ original, edit, thumb, w: s.img.width, h: s.img.height });
+    } catch (e) {
+      setError(`Could not process the photo: ${(e as Error).message}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function openCamera() {
+    // iOS: the permission request must be the first thing in the tap handler.
+    setMotion(await requestMotionPermission());
+    setStep('camera');
+  }
+
+  function adoptPhoto(next: PhotoRefs) {
+    if (photo && !existing) void deleteBlobs([photo.original, photo.edit, photo.thumb]);
+    const { w, h } = next;
+    setPhoto(next);
+    const first = defaultLine(w, h, 0);
+    setLines([first]);
+    setActive(first.id);
+    setBounds({ left: 0, top: 0, right: w, bottom: h });
+    setStep('measure');
   }
 
   async function cancel() {
@@ -131,6 +173,7 @@ export function WallWizard({ wallId }: { wallId?: string }) {
       measurements: lines.filter((l) => l.lengthMm).map((l) => ({ p: l.p, q: l.q, lengthMm: l.lengthMm! })),
       pxPerMm: fit.pxPerMm,
       anisotropy: fit.anisotropy,
+      gravity: capture.gravity,
       spreadPct: fit.spreadPct,
       quality: fit.quality,
     };
@@ -140,7 +183,7 @@ export function WallWizard({ wallId }: { wallId?: string }) {
       name: name.trim() || 'My wall',
       photo: existing?.photo ?? { original: photo.original, rectified: photo.edit, widthPx: photo.w, heightPx: photo.h },
       thumb: existing?.thumb ?? photo.thumb,
-      capture: existing?.capture ?? 'import',
+      capture: capture.kind,
       calibration,
       bounds: { left: bounds.left / sx, top: bounds.top / sy, right: bounds.right / sx, bottom: bounds.bottom / sy },
       datums: {
@@ -159,6 +202,19 @@ export function WallWizard({ wallId }: { wallId?: string }) {
   const title = existing ? 'Edit calibration' : 'Add a wall';
   const back = existing ? `#/walls/${existing.id}` : '#/walls';
 
+  // ── Step: camera ──
+  if (step === 'camera') {
+    return (
+      <GuidedCamera
+        mode="wall"
+        motion={motion}
+        onCapture={(s) => void onGuided(s)}
+        onCancel={() => setStep('photo')}
+        onUseFile={() => setStep('photo')}
+      />
+    );
+  }
+
   // ── Step: photo ──
   if (step === 'photo') {
     return (
@@ -172,8 +228,11 @@ export function WallWizard({ wallId }: { wallId?: string }) {
             <li>Include something you can measure: the wall’s width, a door frame, or a sheet of paper taped up.</li>
           </ul>
           <div className="actions">
-            <label className="button primary">
-              Take photo
+            <button className="primary" onClick={() => void openCamera()} disabled={busy}>
+              Use camera with level
+            </button>
+            <label className="button">
+              Phone camera app
               <input type="file" accept="image/*" capture="environment" hidden onChange={(e) => void onFile(e.target.files?.[0])} />
             </label>
             <label className="button">
@@ -181,6 +240,7 @@ export function WallWizard({ wallId }: { wallId?: string }) {
               <input type="file" accept="image/*" hidden onChange={(e) => void onFile(e.target.files?.[0])} />
             </label>
           </div>
+          <p className="hint">The level camera straightens the photo automatically, so one measurement is enough. The phone’s own camera app gives higher resolution but no straightening.</p>
           {busy && <p className="muted">Processing photo…</p>}
           {error && <p className="error">{error}</p>}
         </div>

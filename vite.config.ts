@@ -24,8 +24,8 @@ export default defineConfig(({ mode }) => {
       ...(useHttps ? [basicSsl()] : []),
       VitePWA({
         registerType: 'autoUpdate',
-      // Icons are already matched by workbox.globPatterns; don't list them twice.
-      includeManifestIcons: false,
+        // Icons are already matched by workbox.globPatterns; don't list them twice.
+        includeManifestIcons: false,
         manifest: {
           name: 'HangPlan',
           short_name: 'HangPlan',
@@ -45,6 +45,16 @@ export default defineConfig(({ mode }) => {
         },
         workbox: {
           globPatterns: ['**/*.{js,css,html,svg,png}'],
+          // OpenCV.js (inside the CV worker, ~11 MB) isn't precached for every
+          // visitor; it's cached the first time someone uses a CV feature.
+          globIgnores: ['**/cv.worker-*.js'],
+          runtimeCaching: [
+            {
+              urlPattern: ({ url }) => /\/assets\/cv\.worker-[^/]+\.js$/.test(url.pathname),
+              handler: 'CacheFirst',
+              options: { cacheName: 'cv-worker', expiration: { maxEntries: 2 } },
+            },
+          ],
         },
       }),
     ],

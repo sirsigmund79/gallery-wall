@@ -11,6 +11,12 @@ import { TABS, useRoute, type Route, type Tab } from './router.ts';
 // The canvas editor pulls in Konva; load it only when a wall is opened.
 const WallEditor = lazy(() => import('../features/editor/WallEditor.tsx').then((m) => ({ default: m.WallEditor })));
 
+// Scanning pulls in the CV worker client; load it only when used.
+const ScanArt = lazy(() => import('../features/scan/ScanArt.tsx').then((m) => ({ default: m.ScanArt })));
+const SensorCheck = lazy(() => import('../features/settings/SensorCheck.tsx').then((m) => ({ default: m.SensorCheck })));
+
+const loading = <p className="muted center">Loading…</p>;
+
 const LABELS: Record<Tab, string> = { walls: 'Walls', art: 'Art', settings: 'Settings' };
 const ICONS: Record<Tab, string> = {
   walls: 'M3 4h18v16H3z M7 8h4v5H7z M13 8h4v8h-4z',
@@ -20,7 +26,19 @@ const ICONS: Record<Tab, string> = {
 
 function Screen({ route }: { route: Route }) {
   const [a, b, c] = route.rest;
+  if (route.tab === 'art' && a === 'scan')
+    return (
+      <Suspense fallback={loading}>
+        <ScanArt />
+      </Suspense>
+    );
   if (route.tab === 'art') return a ? <PieceEditor key={a} id={a} /> : <ArtScreen />;
+  if (route.tab === 'settings' && a === 'sensors')
+    return (
+      <Suspense fallback={loading}>
+        <SensorCheck />
+      </Suspense>
+    );
   if (route.tab === 'settings') return <SettingsScreen />;
   if (a === 'new') return <WallWizard key="new" />;
   if (a && b === 'calibrate') return <WallWizard key={`cal-${a}`} wallId={a} />;

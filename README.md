@@ -16,12 +16,16 @@ Dependency licenses: [`THIRD_PARTY.md`](THIRD_PARTY.md).
 | M2 Wall calibration | Mostly done: photo import, measurements, quality, two-axis, edges, floor/ceiling. Guided capture and "fix angle" pending |
 | M3 Layout editor | Core done: drag, snapping incl. equal gaps, exact positions, nudge, undo/redo, layouts. Align/distribute and compare pending |
 | Hang guide | Basic printable nail table (PDF templates are M7) |
-| M4+ | Not started |
+| M4 Art from photo | Done: multi-piece detection, corner editing, reference sizing, crops, standard-size suggestions. Needs real-photo QA |
+| Guided capture (gyro) | Done for walls and art; needs sign-convention check on real iPhone/Android (Settings → Sensor check) |
+| M5+ | Not started |
 
 ### What you can do today
 
-1. **Art → Add art:** name, outer size (e.g. `16` × `20`, or `24 1/2`), hanger type.
-2. **Walls → Add a wall:** take or choose a photo, drag the red line over something you know the
+1. **Art → Scan art:** lay pieces on the floor, photograph them with the level camera, tap one you
+   know the size of (or a sheet of paper or a card in the photo) and enter it. Every piece is
+   measured, cropped and straightened. Or **Add by hand** with a typed size.
+2. **Walls → Add a wall:** use the level camera (straightens the photo), or choose a photo, drag the red line over something you know the
    length of (door width, wall width, a sheet of paper), type it. Optionally mark the floor.
 3. **Add art** onto the wall, drag pieces around (they snap to edges, centres and equal gaps), or
    type exact positions.

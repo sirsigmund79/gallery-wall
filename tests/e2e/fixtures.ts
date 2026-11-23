@@ -51,3 +51,59 @@ export async function dragHandle(page: Page, label: string, x: number, y: number
   await page.mouse.move(to.x, to.y, { steps: 4 });
   await page.mouse.up();
 }
+
+/**
+ * Synthetic straight-down floor photo: three framed pieces and an A4 sheet on a
+ * textured floor, 1.6 px per mm. Drawn in the browser; nothing committed.
+ */
+export const FLOOR = {
+  pxPerMm: 1.6,
+  width: 1800,
+  height: 1350,
+  pieces: [
+    { name: 'black 16x20', x: 80, y: 90, w: 406.4, h: 508, frame: '#1c1c1c', inner: '#ece6d8' },
+    { name: 'wood 11x14', x: 560, y: 120, w: 279.4, h: 355.6, frame: '#b08850', inner: '#3d5f8c' },
+    { name: 'white 8x10', x: 600, y: 540, w: 203.2, h: 254, frame: '#f4f2ee', inner: '#a03a2c' },
+  ],
+  a4: { x: 900, y: 130, w: 210, h: 297 },
+};
+
+export async function floorPhotoPng(page: Page): Promise<Buffer> {
+  const dataUrl = await page.evaluate((F) => {
+    const c = document.createElement('canvas');
+    c.width = F.width;
+    c.height = F.height;
+    const g = c.getContext('2d')!;
+    let seed = 42;
+    const r = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 32);
+    g.fillStyle = '#9a7653';
+    g.fillRect(0, 0, c.width, c.height);
+    for (let y = 0; y < c.height; y += 5) {
+      const v = 120 + Math.round(r() * 40);
+      g.strokeStyle = `rgb(${v + 30},${v},${v - 40})`;
+      g.lineWidth = 2;
+      g.beginPath();
+      g.moveTo(0, y);
+      g.lineTo(c.width, y + (r() - 0.5) * 12);
+      g.stroke();
+    }
+    const k = F.pxPerMm;
+    for (const p of F.pieces) {
+      g.fillStyle = p.frame;
+      g.fillRect(p.x * k, p.y * k, p.w * k, p.h * k);
+      const b = Math.min(p.w, p.h) * 0.12 * k;
+      g.fillStyle = p.inner;
+      g.fillRect(p.x * k + b, p.y * k + b, p.w * k - 2 * b, p.h * k - 2 * b);
+    }
+    g.fillStyle = '#fbfbf8';
+    g.fillRect(F.a4.x * k, F.a4.y * k, F.a4.w * k, F.a4.h * k);
+    return c.toDataURL('image/png');
+  }, FLOOR);
+  return Buffer.from(dataUrl.split(',')[1]!, 'base64');
+}
+
+/** Click a point given in image pixels on a PhotoMarkup of an image w×h. */
+export async function clickImagePoint(page: Page, x: number, y: number, w: number, h: number) {
+  const box = (await page.locator('.markup svg').boundingBox())!;
+  await page.mouse.click(box.x + (x / w) * box.width, box.y + (y / h) * box.height);
+}

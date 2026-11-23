@@ -25,9 +25,14 @@ export function ArtScreen() {
   }, [pieces, q, status]);
 
   const add = (
-    <a className="button primary" href="#/art/new">
-      Add art
-    </a>
+    <>
+      <a className="button primary" href="#/art/scan">
+        Scan art
+      </a>
+      <a className="button" href="#/art/new">
+        Add by hand
+      </a>
+    </>
   );
 
   if (pieces === undefined) return null;
@@ -37,8 +42,8 @@ export function ArtScreen() {
       {pieces.length === 0 ? (
         <EmptyState
           title="Your art library is empty"
-          body="Add each piece with its real outer size (including the frame). A photo is optional."
-          action={add}
+          body="Photograph several pieces at once and they’re measured for you, or type each piece’s outer size (including the frame)."
+          action={<div className="actions center-actions">{add}</div>}
         />
       ) : (
         <>

@@ -8,14 +8,14 @@ test('add art, calibrate a wall from one measurement, place art, read nail posit
 
   // ── Art ──
   await page.getByRole('link', { name: 'Art' }).click();
-  await page.getByRole('link', { name: 'Add art' }).click();
+  await page.getByRole('link', { name: 'Add by hand' }).click();
   await page.getByLabel('Name').fill('Beach print');
   await page.getByLabel('Width').fill('16');
   await page.getByLabel('Height').fill('20');
   await page.getByRole('button', { name: 'Save' }).click();
   await expect(page.getByText('16 in × 20 in')).toBeVisible();
 
-  await page.getByRole('link', { name: 'Add art' }).click();
+  await page.getByRole('link', { name: 'Add by hand' }).click();
   await page.getByLabel('Name').fill('Map');
   await page.getByLabel('Width').fill('24 1/2');
   await page.getByLabel('Height').fill('18');
