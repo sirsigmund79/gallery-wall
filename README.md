@@ -31,19 +31,22 @@ Camera, motion sensors and the service worker all need HTTPS. Two options:
 **A. Tunnel (recommended; trusted certificate, PWA install works, any network)**
 
 ```sh
-npm run build && npx vite preview          # or: npm run dev
+npm run build
+npx vite preview                      # or: npm run dev (port 5173)
 cloudflared tunnel --url http://localhost:4173   # 5173 for dev
 ```
 
 Open the printed `https://<random>.trycloudflare.com` URL on the phone. Install cloudflared with
-`brew install cloudflared` (macOS) or see Cloudflare's docs. Quick tunnels need no account. The URL is
+`winget install --id Cloudflare.cloudflared` (Windows; open a new terminal afterwards),
+`brew install cloudflared` (macOS), or see Cloudflare's docs for Linux. Quick tunnels need no account. The URL is
 public while the tunnel runs, so stop it (Ctrl-C) when you're done.
 
 **B. Same Wi-Fi, self-signed certificate (no extra tools)**
 
 ```sh
 npm run dev:host        # https://<your-LAN-IP>:5173, live reload
-npm run build && npm run preview:host   # https://<your-LAN-IP>:4173, production build
+npm run build
+npm run preview:host    # https://<your-LAN-IP>:4173, production build
 ```
 
 Open the "Network" URL Vite prints and accept the certificate warning (iOS: *Show Details → visit

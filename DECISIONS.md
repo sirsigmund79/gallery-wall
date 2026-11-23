@@ -10,7 +10,8 @@ Deviations from the spec (`docs/SPEC.md`), and choices the spec left open. Newes
   nested routes (wall → layout editor) arrive in M2/M3.
 - **TypeScript pinned to 5.9.x.** TypeScript 7 (native port) is current, but the lint toolchain
   (typescript-eslint) is built against the 5.x compiler API. Revisit once it officially supports 7.
-- **Local HTTPS: `@vitejs/plugin-basic-ssl`, enabled with `HTTPS=1 npm run dev`.** It generates a
+- **Local HTTPS: `@vitejs/plugin-basic-ssl`, enabled with `vite --mode lan` (`npm run dev:host` / `npm run preview:host`).** A mode flag
+  rather than an env var, because `HTTPS=1 cmd` syntax fails in Windows shells. It generates a
   throwaway self-signed certificate at dev time, so nothing cert-related lives in the repo. Phones
   will show a certificate warning once; mkcert or a cloudflared tunnel remain alternatives
   (see README). Cert/key files and tunnel configs are git-ignored.
