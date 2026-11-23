@@ -10,6 +10,8 @@ Snippets copied from other projects are listed here with their source and licens
 | react, react-dom | MIT | UI |
 | zustand | MIT | State store |
 | dexie | Apache-2.0 | IndexedDB wrapper |
+| dexie-react-hooks | Apache-2.0 | Live queries in React |
+| konva, react-konva | MIT | Layout editor canvas |
 | workbox-window (via vite-plugin-pwa) | MIT | Service worker registration |
 
 ## Build and test tooling (not shipped)
@@ -21,10 +23,15 @@ Snippets copied from other projects are listed here with their source and licens
 | typescript | Apache-2.0 |
 | vitest | MIT |
 | fake-indexeddb | Apache-2.0 |
+| fast-check | MIT |
+| @playwright/test | Apache-2.0 |
 | jsdom | MIT |
 | @testing-library/react | MIT |
 | eslint, @eslint/js, typescript-eslint, eslint-plugin-react-hooks, globals | MIT |
 
-## Copied snippets
+## Copied snippets / adapted approaches
 
-None yet.
+- Edge and centre snapping in `src/geometry/layout/snap.ts` follows the approach of Konva's
+  "Objects Snapping" demo (MIT); rewritten as pure functions, no code copied.
+- Pinch-zoom in `src/features/editor/WallCanvas.tsx` follows Konva's "Multi-touch scale stage"
+  demo (MIT); rewritten, no code copied.

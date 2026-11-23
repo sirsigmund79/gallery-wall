@@ -84,6 +84,10 @@ export interface Wall {
   id: string;
   name: string;
   photo: { original: BlobRef; rectified: BlobRef; widthPx: number; heightPx: number };
+  /** Small preview for lists. */
+  thumb?: BlobRef;
+  /** How the photo was captured; affects calibration quality with one measurement. */
+  capture?: 'guided' | 'import';
   calibration: CalibrationRecord;
   bounds: { left: Mm; top: Mm; right: Mm; bottom: Mm };
   datums: { floorY?: Mm; ceilingY?: Mm };

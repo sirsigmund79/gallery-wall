@@ -1,14 +1,25 @@
 import { useSyncExternalStore } from 'react';
 
-// Minimal hash router: three top-level tabs don't justify a routing library
-// (see DECISIONS.md). Hash routing also works on any static host without
-// rewrite rules.
+// Minimal hash router (see DECISIONS.md). Routes:
+//   #/walls            #/walls/new        #/walls/<id>
+//   #/art              #/art/new          #/art/<id>
+//   #/settings
 export type Tab = 'walls' | 'art' | 'settings';
 export const TABS: readonly Tab[] = ['walls', 'art', 'settings'];
 
-function parse(): Tab {
-  const t = location.hash.replace(/^#\/?/, '').split('/')[0];
-  return (TABS as readonly string[]).includes(t ?? '') ? (t as Tab) : 'walls';
+export interface Route {
+  tab: Tab;
+  /** Path segments after the tab. */
+  rest: string[];
+}
+
+const getHash = () => location.hash;
+
+export function parseRoute(hash: string): Route {
+  const parts = hash.replace(/^#\/?/, '').split('/').filter(Boolean).map(decodeURIComponent);
+  const t = parts[0];
+  if (t && (TABS as readonly string[]).includes(t)) return { tab: t as Tab, rest: parts.slice(1) };
+  return { tab: 'walls', rest: [] };
 }
 
 function subscribe(cb: () => void) {
@@ -16,6 +27,13 @@ function subscribe(cb: () => void) {
   return () => window.removeEventListener('hashchange', cb);
 }
 
-export function useTab(): Tab {
-  return useSyncExternalStore(subscribe, parse, () => 'walls');
+export function useRoute(): Route {
+  const hash = useSyncExternalStore(subscribe, getHash, () => '');
+  return parseRoute(hash);
+}
+
+export function navigate(path: string, opts: { replace?: boolean } = {}) {
+  const hash = `#/${path.replace(/^\/+/, '')}`;
+  if (opts.replace) location.replace(hash);
+  else location.hash = hash;
 }
