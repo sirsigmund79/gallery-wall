@@ -8,7 +8,8 @@ import { straighten } from '../../capture/straighten.ts';
 import { blobToRGBA, canvasToBlob, cloneImage, cvCall, releaseCv, rgbaToBlob } from '../../cv/client.ts';
 import type { RGBAImage } from '../../cv/types.ts';
 import { newId } from '../../db/ids.ts';
-import { putBlob, savePiece } from '../../db/repo.ts';
+import { listPieces, putBlob, savePiece } from '../../db/repo.ts';
+import { nextPieceNames } from '../art/naming.ts';
 import type { ArtPiece, Confidence, Mm } from '../../domain/types.ts';
 import { defaultHangParams, makeHangSpec } from '../../geometry/layout/hang.ts';
 import type { PlaneMap, Quad } from '../../geometry/quad.ts';
@@ -221,13 +222,14 @@ export function ScanArt() {
       const items = keep.map(({ q, m }) => ({ quad: q.quad, ...cropSize(m.widthMm, m.heightMm, q.quad) }));
       const copy = cloneImage(photo.img);
       const crops = await cvCall('crops', { img: copy, items }, [copy.data.buffer]);
+      const names = nextPieceNames((await listPieces()).map((p) => p.name), keep.length);
       const rs: Result[] = [];
       for (const [i, { q, m }] of keep.entries()) {
         const crop = await rgbaToBlob(crops[i]!, 0.9);
         rs.push({
           id: q.id,
           include: true,
-          name: `Piece ${i + 1}`,
+          name: names[i]!,
           widthMm: m.widthMm,
           heightMm: m.heightMm,
           measuredW: m.widthMm,

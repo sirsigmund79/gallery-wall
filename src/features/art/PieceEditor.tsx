@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { navigate } from '../../app/router.ts';
 import { newId } from '../../db/ids.ts';
-import { deleteBlobs, deletePiece, getBlob, getPiece, layoutsUsingPiece, putBlob, savePiece } from '../../db/repo.ts';
+import { deleteBlobs, deletePiece, getBlob, getPiece, listPieces, layoutsUsingPiece, putBlob, savePiece } from '../../db/repo.ts';
 import type { ArtPiece, HangType, Mm, PieceStatus } from '../../domain/types.ts';
 import { defaultHangParams, hangParamsOf, makeHangSpec, type HangParams } from '../../geometry/layout/hang.ts';
 import { useSettings } from '../../state/settings.ts';
@@ -9,6 +9,7 @@ import { LengthInput } from '../../ui/LengthInput.tsx';
 import { Thumb } from '../../ui/Thumb.tsx';
 import { TopBar } from '../../ui/TopBar.tsx';
 import { importPhoto } from '../../media/image.ts';
+import { nextPieceNames } from './naming.ts';
 import { HANG_LABEL, HANG_TYPES, STATUSES, STATUS_LABEL } from './constants.ts';
 
 interface Draft {
@@ -57,7 +58,14 @@ export function PieceEditor({ id }: { id: string | 'new' }) {
   const [newBlobs, setNewBlobs] = useState<string[]>([]);
 
   useEffect(() => {
-    if (id === 'new') return;
+    if (id === 'new') {
+      // Suggest the next "Piece N" so hand-added pieces follow the same numbering.
+      void listPieces().then((ps) => {
+        const [name] = nextPieceNames(ps.map((p) => p.name), 1);
+        setD((cur) => (cur && !cur.name ? { ...cur, name: name! } : cur));
+      });
+      return;
+    }
     void getPiece(id).then((p) => {
       if (!p) return navigate('art', { replace: true });
       setExisting(p);

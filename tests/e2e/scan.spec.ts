@@ -39,4 +39,16 @@ test('scan several pieces from one photo, using an A4 sheet as the size referenc
   await expect(page.getByText('Big print')).toBeVisible();
   await expect(page.getByText('16 in × 20 in')).toBeVisible();
   await expect(page.locator('.tile img')).toHaveCount(3); // each has its cropped photo
+
+  // A second scan continues the numbering instead of starting at "Piece 1" again.
+  await page.getByRole('link', { name: 'Scan art' }).click();
+  await page.locator('input[type=file]').setInputFiles({ name: 'floor.png', mimeType: 'image/png', buffer: await floorPhotoPng(page) });
+  await expect(page.getByText(/Found\s+4\s+shapes/)).toBeVisible({ timeout: 60_000 });
+  await clickImagePoint(page, (FLOOR.a4.x + FLOOR.a4.w / 2) * k, (FLOOR.a4.y + FLOOR.a4.h / 2) * k, FLOOR.width, FLOOR.height);
+  await page.getByRole('button', { name: 'I know this one’s size' }).click();
+  await page.getByRole('button', { name: 'A4 sheet' }).click();
+  await page.getByRole('button', { name: 'Measure 3 pieces' }).click();
+  await expect(page.getByRole('heading', { name: 'Check sizes' })).toBeVisible({ timeout: 30_000 });
+  const names = await page.getByLabel('Name').evaluateAll((els) => els.map((e) => (e as HTMLInputElement).value));
+  expect(names).toEqual(['Piece 4', 'Piece 5', 'Piece 6']);
 });
