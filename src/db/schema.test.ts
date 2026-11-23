@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import Dexie from 'dexie';
-import { CURRENT_SCHEMA_VERSION, SCHEMA_VERSIONS, createDb } from './schema.ts';
+import { CURRENT_SCHEMA_VERSION, DEFAULT_ROOM, SCHEMA_VERSIONS, createDb } from './schema.ts';
 
 let n = 0;
 const names: string[] = [];
@@ -40,7 +40,7 @@ describe('migration v1 -> v2', () => {
     await v1.table('settings').put({ id: 'app', units: 'in', onboardingSeen: true });
     v1.close();
 
-    const v2 = createDb(name);
+    const v2 = createDb(name, 2);
     await v2.open();
     expect(v2.verno).toBe(2);
 
@@ -53,5 +53,25 @@ describe('migration v1 -> v2', () => {
     expect(await v2.pieces.where('tags').equals('blue').primaryKeys()).toEqual(['b']);
     expect(await v2.settings.get('app')).toMatchObject({ units: 'in', onboardingSeen: true });
     v2.close();
+  });
+});
+
+describe('migration v2 -> v3', () => {
+  it('puts existing walls in the default room and indexes rooms', async () => {
+    const name = freshName();
+    const v2 = createDb(name, 2);
+    await v2.open();
+    await v2.table('walls').bulkAdd([
+      { id: 'w1', name: 'Hall', updatedAt: 1, layouts: [] },
+      { id: 'w2', name: 'Den', room: 'Den', updatedAt: 2, layouts: [] },
+    ]);
+    v2.close();
+    const v3 = createDb(name);
+    await v3.open();
+    expect(v3.verno).toBe(3);
+    expect((await v3.walls.get('w1'))?.room).toBe(DEFAULT_ROOM);
+    expect((await v3.walls.get('w2'))?.room).toBe('Den');
+    expect(await v3.walls.where('room').equals('Den').primaryKeys()).toEqual(['w2']);
+    v3.close();
   });
 });

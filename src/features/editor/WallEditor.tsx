@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
+import { getWall, listPieces, listWalls, newLayout, roomOrder } from '../../db/repo.ts';
+import { DEFAULT_ROOM } from '../../db/schema.ts';
 import { navigate } from '../../app/router.ts';
-import { getWall, listPieces, newLayout } from '../../db/repo.ts';
 import { newId } from '../../db/ids.ts';
 import type { ArtPiece, LengthUnit, Mm, Placement, Wall } from '../../domain/types.ts';
 import { accuracyPct } from '../../geometry/calibration.ts';
@@ -22,6 +23,8 @@ export function WallEditor({ wallId, layoutId }: { wallId: string; layoutId?: st
   const units = useSettings((s) => s.units);
   const ed = useEditor();
   const allPieces = useLiveQuery(listPieces);
+  const allWalls = useLiveQuery(listWalls);
+  const swipe = useRef<number | null>(null);
   const [sheet, setSheet] = useState(false);
   const [suggest, setSuggest] = useState(false);
   const fitRef = useRef<(() => void) | null>(null);
@@ -75,6 +78,12 @@ export function WallEditor({ wallId, layoutId }: { wallId: string; layoutId?: st
 
   if (!wall || !allPieces) return <p className="muted center">Loading…</p>;
   const layout = wall.layouts.find((l) => l.id === ed.layoutId)!;
+  // Neighbouring walls in the same room ("walk around the room").
+  const inRoom = roomOrder((allWalls ?? []).filter((w) => (w.room ?? DEFAULT_ROOM) === (wall.room ?? DEFAULT_ROOM)));
+  const at = inRoom.findIndex((w) => w.id === wall.id);
+  const prev = at > 0 ? inRoom[at - 1] : undefined;
+  const next = at >= 0 && at < inRoom.length - 1 ? inRoom[at + 1] : undefined;
+  const goWall = (w?: Wall) => w && navigate(`walls/${w.id}/edit`);
   const datum = availableDatums(wall)[0]!;
   const b = wall.bounds;
 
@@ -125,36 +134,56 @@ export function WallEditor({ wallId, layoutId }: { wallId: string; layoutId?: st
 
   return (
     <div className="editor">
-      <header className="editor-bar">
-        <a className="icon-btn" href="#/walls" aria-label="Back to walls">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" /></svg>
-        </a>
-        <select
-          className="layout-select"
-          aria-label="Layout"
-          value={layout.id}
-          onChange={(e) => (e.target.value.startsWith('action:') ? layoutAction(e.target.value.slice(7)) : ed.switchLayout(e.target.value))}
-        >
-          <optgroup label={wall.name}>
-            {wall.layouts.map((l) => (
-              <option key={l.id} value={l.id}>
-                {l.name}
-              </option>
-            ))}
-          </optgroup>
-          <optgroup label="Layouts">
-            <option value="action:new">+ New layout</option>
-            <option value="action:duplicate">Duplicate this layout</option>
-            <option value="action:rename">Rename this layout…</option>
-            <option value="action:delete">Delete this layout…</option>
-          </optgroup>
-        </select>
-        <button className="icon-btn" onClick={ed.undo} disabled={!ed.history.past.length} aria-label="Undo">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 7L4 12l5 5M4 12h11a5 5 0 0 1 0 10h-3" /></svg>
-        </button>
-        <button className="icon-btn" onClick={ed.redo} disabled={!ed.history.future.length} aria-label="Redo">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 7l5 5-5 5M20 12H9a5 5 0 0 0 0 10h3" /></svg>
-        </button>
+      <header
+        className="editor-bar"
+        onTouchStart={(e) => (swipe.current = e.touches[0]!.clientX)}
+        onTouchEnd={(e) => {
+          const dx = e.changedTouches[0]!.clientX - (swipe.current ?? e.changedTouches[0]!.clientX);
+          swipe.current = null;
+          if (Math.abs(dx) > 60) goWall(dx < 0 ? next : prev);
+        }}
+      >
+        <div className="editor-row">
+          <a className="icon-btn" href="#/walls" aria-label="Back to Home">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" /></svg>
+          </a>
+          <button className="icon-btn" aria-label={prev ? `Previous wall: ${prev.name}` : 'No previous wall'} disabled={!prev} onClick={() => goWall(prev)}>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 7l-5 5 5 5" /></svg>
+          </button>
+          <div className="editor-title">
+            <span className="muted">{wall.room ?? DEFAULT_ROOM}</span>
+            <strong>{wall.name}</strong>
+          </div>
+          <button className="icon-btn" aria-label={next ? `Next wall: ${next.name}` : 'No next wall'} disabled={!next} onClick={() => goWall(next)}>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 7l5 5-5 5" /></svg>
+          </button>
+          <button className="icon-btn" onClick={ed.undo} disabled={!ed.history.past.length} aria-label="Undo">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 7L4 12l5 5M4 12h11a5 5 0 0 1 0 10h-3" /></svg>
+          </button>
+          <button className="icon-btn" onClick={ed.redo} disabled={!ed.history.future.length} aria-label="Redo">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 7l5 5-5 5M20 12H9a5 5 0 0 0 0 10h3" /></svg>
+          </button>
+        </div>
+        <div className="layout-chips" role="tablist" aria-label="Layouts">
+          {wall.layouts.map((l) => (
+            <button key={l.id} role="tab" aria-selected={l.id === layout.id} className={`chip-btn${l.id === layout.id ? ' on' : ''}`} onClick={() => ed.switchLayout(l.id)}>
+              {l.name}
+            </button>
+          ))}
+          <button className="chip-btn" onClick={() => layoutAction('new')} aria-label="New layout">
+            + New
+          </button>
+          <details className="row-menu layout-menu">
+            <summary aria-label="Layout options">⋯</summary>
+            <div>
+              <button onClick={() => layoutAction('duplicate')}>Duplicate “{layout.name}”</button>
+              <button onClick={() => layoutAction('rename')}>Rename…</button>
+              <button className="danger" onClick={() => layoutAction('delete')}>
+                Delete…
+              </button>
+            </div>
+          </details>
+        </div>
       </header>
 
       <WallCanvas

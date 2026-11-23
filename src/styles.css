@@ -170,8 +170,16 @@ fieldset.card { display: flex; flex-direction: column; gap: 12px; }
 /* ───────── Editor ───────── */
 .content.full { padding: 0; max-width: none; overflow: hidden; display: flex; }
 .editor { display: flex; flex-direction: column; flex: 1; min-height: 0; height: 100%; }
-.editor-bar { display: flex; align-items: center; gap: 4px; padding: calc(4px + env(safe-area-inset-top)) 8px 4px; background: var(--surface); border-bottom: 1px solid var(--border); }
-.layout-select { flex: 1; width: auto; min-width: 0; font-weight: 600; }
+.editor-bar { display: flex; flex-direction: column; gap: 2px; padding: calc(4px + env(safe-area-inset-top)) 8px 6px; background: var(--surface); border-bottom: 1px solid var(--border); touch-action: pan-y; }
+.editor-row { display: flex; align-items: center; gap: 2px; }
+.editor-title { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; line-height: 1.2; }
+.editor-title > * { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.editor-title .muted { font-size: 0.75rem; }
+.layout-chips { display: flex; gap: 6px; overflow-x: auto; padding: 2px 2px 0; scrollbar-width: none; align-items: center; position: relative; }
+.layout-chips::-webkit-scrollbar { display: none; }
+.layout-chips .chip-btn { flex: none; white-space: nowrap; }
+.layout-menu { position: static; }
+.layout-menu > div { top: auto; right: 8px; margin-top: 4px; }
 .canvas-box { flex: 1; min-height: 0; background: #2b2b2b; position: relative; overflow: hidden; touch-action: none; }
 .editor-panel { background: var(--surface); border-top: 1px solid var(--border); padding: 10px 12px calc(10px + env(safe-area-inset-bottom)); max-height: 50vh; max-height: 50dvh; overflow-y: auto; }
 .editor-panel .actions { margin: 0; }
@@ -270,3 +278,26 @@ button.link.small { font-size: 0.8rem; min-height: 36px; }
 /* ───────── Add a wall ───────── */
 .floor-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .done-photo { width: 100%; max-height: 45vh; max-height: 45dvh; object-fit: contain; border-radius: 10px; background: var(--surface); }
+
+/* ───────── Home ───────── */
+.room { margin: 0 -16px 20px; }
+.room-head { display: flex; align-items: baseline; gap: 8px; padding: 0 16px; }
+.room-head h2 { margin: 0 0 8px; font-size: 1.2rem; }
+.room-walls { list-style: none; margin: 0; padding: 0 16px 8px; display: flex; gap: 12px; overflow-x: auto; scroll-snap-type: x mandatory; scroll-padding: 0 16px; scrollbar-width: none; }
+.room-walls::-webkit-scrollbar { display: none; }
+.wall-card { flex: none; width: min(82vw, 420px); scroll-snap-align: start; background: var(--surface); border: 1px solid var(--border); border-radius: 16px; overflow: visible; display: flex; flex-direction: column; position: relative; }
+.wall-card-link { display: flex; flex-direction: column; color: var(--text); text-decoration: none; }
+.wall-card-img { width: 100%; aspect-ratio: 4 / 3; display: block; border-radius: 16px 16px 0 0; background: #cfc8bb; }
+.wall-card-text { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px 0; }
+.wall-card-foot { display: flex; justify-content: space-between; align-items: center; padding: 4px 4px 8px 12px; }
+.add-card { width: min(40vw, 180px); border-style: dashed; }
+.wall-card-add { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; min-height: 160px; color: var(--accent); text-decoration: none; font-weight: 600; }
+.wall-card-add span:first-child { font-size: 2rem; line-height: 1; }
+.wall-card .row-menu > div { bottom: 48px; top: auto; }
+
+/* Step-into transition (View Transitions API) */
+::view-transition-group(wall-photo) { animation-duration: 380ms; animation-timing-function: cubic-bezier(0.2, 0.8, 0.2, 1); }
+::view-transition-old(root), ::view-transition-new(root) { animation-duration: 220ms; }
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation: none !important; }
+}

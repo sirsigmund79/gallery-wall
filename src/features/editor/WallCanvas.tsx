@@ -7,6 +7,7 @@ import { axisScales } from '../../geometry/calibration.ts';
 import { snapRect, type GapMark, type Guide } from '../../geometry/layout/snap.ts';
 import { formatLength } from '../../geometry/units.ts';
 import { EYE_LEVEL_MM } from './placement.ts';
+import { WALL_VT_NAME } from '../../app/transition.ts';
 import { useBlobImage } from '../../media/useBlobUrl.ts';
 
 // Allow pinch-zoom while a drag is in progress.
@@ -166,7 +167,7 @@ export function WallCanvas({ wall, placements, pieces, selectedId, snapping, uni
 
   const b = wall.bounds;
   return (
-    <div className="canvas-box" ref={box}>
+    <div className="canvas-box" ref={box} data-vt-target style={{ viewTransitionName: WALL_VT_NAME }}>
       {size.w > 0 && (
         <Stage
           ref={stageRef}
@@ -208,8 +209,8 @@ export function WallCanvas({ wall, placements, pieces, selectedId, snapping, uni
             )}
             {(wall.keepOut ?? []).map((k, i) => (
               <Group key={`ko${i}`} listening={false}>
-                <Rect x={k.x} y={k.y} width={k.w} height={k.h} stroke="#ffffff" opacity={0.6} strokeWidth={1.5} dash={[8, 6]} strokeScaleEnabled={false} />
-                <Text x={k.x + 6 * px} y={k.y + 6 * px} text={`${k.label} · no art`} fontSize={12 * px} fill="#fff" opacity={0.85} />
+                <Rect x={k.x} y={k.y} width={k.w} height={k.h} stroke="#555" opacity={0.7} strokeWidth={1.5} dash={[8, 6]} strokeScaleEnabled={false} />
+                <Text x={k.x + 6 * px} y={k.y + 6 * px} text={`${k.label} · no art`} fontSize={12 * px} fill="#333" stroke="#fff" strokeWidth={3 * px} fillAfterStrokeEnabled />
               </Group>
             ))}
             {wall.datums.floorY !== undefined && (

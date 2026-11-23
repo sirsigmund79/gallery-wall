@@ -49,7 +49,26 @@ export const SCHEMA_VERSIONS: readonly SchemaVersion[] = [
         });
     },
   },
+  {
+    // v3: walls grouped by room (Home screen). Backfill existing walls into
+    // the default room so nothing disappears from Home.
+    version: 3,
+    stores: {
+      walls: 'id, name, updatedAt, room',
+    },
+    upgrade: async (tx) => {
+      await tx
+        .table('walls')
+        .toCollection()
+        .modify((w: Partial<Wall>) => {
+          w.room ??= DEFAULT_ROOM;
+        });
+    },
+  },
 ];
+
+/** Room for walls that don't have one (kept in sync with the UI's default). */
+export const DEFAULT_ROOM = 'My home';
 
 export const CURRENT_SCHEMA_VERSION = SCHEMA_VERSIONS[SCHEMA_VERSIONS.length - 1]!.version;
 

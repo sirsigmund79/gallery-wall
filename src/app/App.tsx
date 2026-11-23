@@ -5,7 +5,7 @@ import { HangGuide } from '../features/export/HangGuide.tsx';
 import { SettingsScreen } from '../features/settings/SettingsScreen.tsx';
 import { AddWall } from '../features/walls/AddWall.tsx';
 import { WallWizard } from '../features/walls/WallWizard.tsx';
-import { WallsScreen } from '../features/walls/WallsScreen.tsx';
+import { HomeScreen } from '../features/walls/HomeScreen.tsx';
 import { useSettings } from '../state/settings.ts';
 import { TABS, useRoute, type Route, type Tab } from './router.ts';
 
@@ -19,9 +19,9 @@ const SensorCheck = lazy(() => import('../features/settings/SensorCheck.tsx').th
 
 const loading = <p className="muted center">Loading…</p>;
 
-const LABELS: Record<Tab, string> = { walls: 'Walls', art: 'Art', settings: 'Settings' };
+const LABELS: Record<Tab, string> = { walls: 'Home', art: 'Art', settings: 'Settings' };
 const ICONS: Record<Tab, string> = {
-  walls: 'M3 4h18v16H3z M7 8h4v5H7z M13 8h4v8h-4z',
+  walls: 'M3 11l9-7 9 7 M5 10v10h14V10 M10 20v-5h4v5',
   art: 'M4 4h16v16H4z M4 16l5-5 4 4 3-3 4 4',
   settings: 'M12 8a4 4 0 1 0 0 8a4 4 0 1 0 0-8z M12 2v3 M12 19v3 M2 12h3 M19 12h3',
 };
@@ -58,7 +58,7 @@ function Screen({ route }: { route: Route }) {
         <WallEditor key={a} wallId={a} layoutId={b === 'edit' ? c : undefined} />
       </Suspense>
     );
-  return <WallsScreen />;
+  return <HomeScreen />;
 }
 
 export function App() {

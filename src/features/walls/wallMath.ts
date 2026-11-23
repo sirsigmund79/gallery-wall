@@ -80,4 +80,4 @@ export function nextWallName(existing: readonly string[]): string {
   }
 }
 
-export const DEFAULT_ROOM = 'My home';
+export { DEFAULT_ROOM } from '../../db/schema.ts';

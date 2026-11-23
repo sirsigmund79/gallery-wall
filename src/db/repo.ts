@@ -70,3 +70,19 @@ export function newLayout(name: string): Layout {
   const now = Date.now();
   return { id: newId(), name, placements: [], createdAt: now, updatedAt: now };
 }
+
+// ── Rooms ──
+/** Walls of one room in "walk-around" order (the order they were added). */
+export const roomOrder = (walls: Wall[]) => [...walls].sort((a, b) => a.createdAt - b.createdAt);
+
+export async function renameRoom(from: string, to: string): Promise<void> {
+  await db.walls.where('room').equals(from).modify({ room: to });
+}
+
+export async function moveWallToRoom(wallId: string, room: string): Promise<void> {
+  await db.walls.update(wallId, { room, updatedAt: Date.now() });
+}
+
+export async function renameWall(wallId: string, name: string): Promise<void> {
+  await db.walls.update(wallId, { name, updatedAt: Date.now() });
+}

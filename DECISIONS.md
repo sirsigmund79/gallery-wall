@@ -259,3 +259,20 @@ Deviations from the spec (`docs/SPEC.md`), and choices the spec left open. Newes
   (several measurement lines, edges, ceiling) remains as **Edges & measurements** in the wall
   menu (`#/walls/:id/advanced`). **Re-measure** (`#/walls/:id/calibrate`) runs the new flow on the
   wall's current photo; placements keep their real positions.
+
+## Rooms and Home ("step into your home")
+
+- **`Wall.room`** (string) groups walls. Schema **v3** indexes it and backfills existing walls to
+  "My home" (migration test). Rooms are just names: no separate table to keep in sync. Rename a
+  room = update its walls.
+- **Home** (was "Walls"; tab renamed, house icon): one section per room. Each wall is a large card
+  with its photo and the most recently edited layout drawn in (`WallPreview`), in a horizontal
+  scroll-snap row, so you swipe around the room, and the next card peeks in to show there's more.
+  Walls in a room are ordered by when they were added ("walk-around order"). Per-wall ⋯ menu:
+  rename, move to room, re-measure, edges & measurements, delete.
+- **Step-in transition:** the View Transitions API morphs the tapped card's photo into the editor
+  canvas (shared name `wall-photo`; waits up to 700 ms for the lazy editor). Without the API (e.g.
+  older iOS) or with reduced motion, it's a plain navigation.
+- **Editor header:** "Room · Wall" title, ‹ › to the neighbouring walls in the same room (also a
+  horizontal swipe on the header), and layouts as chips (+ New, ⋯ for duplicate/rename/delete)
+  instead of a dropdown.
