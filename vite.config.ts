@@ -24,7 +24,6 @@ export default defineConfig(({ mode }) => {
       ...(useHttps ? [basicSsl()] : []),
       VitePWA({
         registerType: 'autoUpdate',
-        includeAssets: ['icon.svg'],
         manifest: {
           name: 'HangPlan',
           short_name: 'HangPlan',

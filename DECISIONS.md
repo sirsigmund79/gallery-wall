@@ -24,9 +24,11 @@ Deviations from the spec (`docs/SPEC.md`), and choices the spec left open. Newes
   photo ("render a neutral labelled rectangle"), so the type has to allow it.
 - **Units default from locale:** `in` for regions US, LR, MM; `cm` everywhere else (open question 2
   in the spec; the spec's stated default is locale-based). The user can change it in Settings.
-- **`npm audit` reports 4 moderate advisories** in `glob`/`minimatch` pulled in by
-  `vite-plugin-pwa` → `workbox-build`. Build-time only, never shipped to the browser; the only "fix"
-  downgrades vite-plugin-pwa to 1.x. Accepted for now; recheck on each dependency update.
+- **`glob` forced to v14 via `overrides` in package.json.** `vite-plugin-pwa` → `workbox-build`
+  (latest, 7.4.1) still asks for `glob@^11`, which is deprecated and has advisories. workbox-build
+  only calls `globSync(pattern, options)`, which v14 keeps unchanged. Checked: the generated
+  service worker lists every built file, and unit + e2e tests pass. `npm audit` is clean. Remove the
+  override once workbox-build depends on a current glob.
 - **Secret scanning:** gitleaks runs in CI on every push and PR, in addition to the broad
   `.gitignore`. The app has no backend and needs no secrets; `.env.example` documents that.
 
