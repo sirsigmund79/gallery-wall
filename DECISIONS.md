@@ -162,3 +162,25 @@ Deviations from the spec (`docs/SPEC.md`), and choices the spec left open. Newes
   could give full resolution on Android Chrome; not used yet.
 - **Walls:** "Use camera with level" is now the primary option. Its photos are straightened, recorded as
   `capture: 'guided'` with the gravity values, and one measurement grades **Good** (spec §5.4).
+
+## Diagnostics (after "scan hangs on my phone")
+
+- **Symptom:** on the owner's phone, scanning stayed on the progress screen indefinitely. It could
+  not be reproduced in desktop Chromium (dev server or production build), and phones have no
+  visible console.
+- **Most likely cause:** OpenCV's Emscripten runtime failing *asynchronously inside the worker*
+  (e.g. WebAssembly memory: the build reserves 128 MB up front and grows up to 2 GB; iOS is
+  strict). That fires no `error` event on the page, so the old code waited forever.
+- **Changes:**
+  - The worker hooks `console.error/warn`, uncaught errors, unhandled rejections and Emscripten's
+    `onAbort` (a module imported *before* OpenCV), and forwards them to the page. It also reports
+    `started` / `ready` / `failed`.
+  - Every worker call has a time limit: 120 s to load the tools plus 60 s per operation. A failed or
+    timed-out load terminates the worker, so the next try starts clean.
+  - An on-device **diagnostics log** (`src/diag/log.ts`) records app errors, console warnings/errors
+    and step timings, in memory and `sessionStorage` (so it survives a crash-reload). It is never
+    sent anywhere. **Settings → Diagnostics** shows device facts, a **Test image tools** self-test
+    and a **Copy report** button.
+  - Progress screens show the step and elapsed seconds; after 12 s they show the recent log and a
+    **Cancel** button. Errors show **Copy details**.
+  - Scans now work at **2400 px** (was 3000) to reduce the worker's peak memory.

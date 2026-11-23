@@ -1,12 +1,31 @@
 /// <reference lib="webworker" />
 // Runs OpenCV.js off the main thread (spec §3: heavy CV in workers).
+// Reports its start-up and any crash to the page, which has no other way to
+// see what happens in here on a phone.
+// Must stay the first import: it hooks the console before OpenCV loads.
+import './worker-console.ts';
 import cvModule from '@techstark/opencv-js';
 import { detectQuads, perspectiveTransform, rectifyQuad, warpImage } from './detect.ts';
 import { whenCvReady } from './load.ts';
 import type { Request, Response } from './protocol.ts';
 import type { RGBAImage } from './types.ts';
 
-const ready = whenCvReady(cvModule);
+const post = (m: Response, transfer: Transferable[] = []) => (self as unknown as Worker).postMessage(m, transfer);
+const t0 = performance.now();
+
+// Emscripten calls onAbort when the runtime dies (e.g. it can't get memory).
+// Without this the page would wait forever for "ready".
+let aborted: string | null = null;
+(cvModule as { onAbort?: (what: unknown) => void }).onAbort = (what) => {
+  aborted = String(what);
+  post({ type: 'log', level: 'error', msg: `[worker] OpenCV aborted: ${aborted}` });
+  post({ type: 'status', stage: 'failed', ms: Math.round(performance.now() - t0), error: aborted });
+};
+
+const ready = whenCvReady(cvModule).then((r) => {
+  post({ type: 'status', stage: 'ready', ms: Math.round(performance.now() - t0) });
+  return r;
+});
 
 const transferOf = (r: unknown): Transferable[] => {
   const imgs = Array.isArray(r) ? r : [r];
@@ -16,7 +35,9 @@ const transferOf = (r: unknown): Transferable[] => {
 self.onmessage = async (e: MessageEvent<Request>) => {
   const req = e.data;
   try {
+    if (aborted) throw new Error(`OpenCV could not start: ${aborted}`);
     const { cv } = await ready;
+    const start = performance.now();
     let result: unknown;
     switch (req.op) {
       case 'detect':
@@ -32,8 +53,8 @@ self.onmessage = async (e: MessageEvent<Request>) => {
         result = perspectiveTransform(cv, req.payload.src, req.payload.dst);
         break;
     }
-    (self as unknown as Worker).postMessage({ id: req.id, ok: true, result } satisfies Response, transferOf(result));
+    post({ id: req.id, ok: true, result, ms: Math.round(performance.now() - start) }, transferOf(result));
   } catch (err) {
-    (self as unknown as Worker).postMessage({ id: req.id, ok: false, error: String((err as Error)?.message ?? err) } satisfies Response);
+    post({ id: req.id, ok: false, error: String((err as Error)?.message ?? err) });
   }
 };

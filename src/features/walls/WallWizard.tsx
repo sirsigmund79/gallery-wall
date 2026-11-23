@@ -10,6 +10,9 @@ import { importPhoto, resizeToBlob, THUMB_MAX_PX } from '../../media/image.ts';
 import { GuidedCamera, type GuidedShot } from '../../capture/GuidedCamera.tsx';
 import { requestMotionPermission, type MotionPermission } from '../../capture/sensors.ts';
 import { DEFAULT_F35_MM } from '../../geometry/gravity.ts';
+import { error as logError, info } from '../../diag/log.ts';
+import { ErrorDetails } from '../../ui/ErrorDetails.tsx';
+import { WorkingPanel } from '../../ui/WorkingPanel.tsx';
 import { useBlobImage } from '../../media/useBlobUrl.ts';
 import { useSettings } from '../../state/settings.ts';
 import { LengthInput } from '../../ui/LengthInput.tsx';
@@ -124,8 +127,10 @@ export function WallWizard({ wallId }: { wallId?: string }) {
     setError(undefined);
     try {
       // Straighten with gravity (spec §5.2). Loads the image tools on first use.
+      info(`Wall: camera shot ${shot.width}×${shot.height}, gravity ${shot.gravity ? 'yes' : 'no'}`);
       const { straighten } = await import('../../capture/straighten.ts');
       const s = await straighten(shot.blob, shot.gravity?.g ?? null, 'wall');
+      info(`Wall: photo ${s.corrected ? 'straightened' : 'not straightened'}, ${s.img.width}×${s.img.height}`);
       const bmp = await createImageBitmap(s.blob);
       const thumbBlob = (await resizeToBlob(bmp, THUMB_MAX_PX, 0.8)).blob;
       bmp.close();
@@ -137,6 +142,7 @@ export function WallWizard({ wallId }: { wallId?: string }) {
       );
       adoptPhoto({ original, edit, thumb, w: s.img.width, h: s.img.height });
     } catch (e) {
+      logError('Wall: processing failed:', e);
       setError(`Could not process the photo: ${(e as Error).message}`);
     } finally {
       setBusy(false);
@@ -241,8 +247,8 @@ export function WallWizard({ wallId }: { wallId?: string }) {
             </label>
           </div>
           <p className="hint">The level camera straightens the photo automatically, so one measurement is enough. The phone’s own camera app gives higher resolution but no straightening.</p>
-          {busy && <p className="muted">Processing photo…</p>}
-          {error && <p className="error">{error}</p>}
+          {busy && <WorkingPanel status="Processing photo… The first time, this also downloads the image tools (about 3.5 MB)." />}
+          {error && <ErrorDetails message={error} />}
         </div>
       </section>
     );

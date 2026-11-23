@@ -13,7 +13,10 @@ import type { ArtPiece, Confidence, Mm } from '../../domain/types.ts';
 import { defaultHangParams, makeHangSpec } from '../../geometry/layout/hang.ts';
 import type { PlaneMap, Quad } from '../../geometry/quad.ts';
 import { formatLength } from '../../geometry/units.ts';
-import { EDIT_MAX_PX, resizeToBlob, THUMB_MAX_PX } from '../../media/image.ts';
+import { resizeToBlob, THUMB_MAX_PX } from '../../media/image.ts';
+import { error as logError, info } from '../../diag/log.ts';
+import { ErrorDetails } from '../../ui/ErrorDetails.tsx';
+import { WorkingPanel } from '../../ui/WorkingPanel.tsx';
 import { useSettings } from '../../state/settings.ts';
 import { LengthInput } from '../../ui/LengthInput.tsx';
 import { PhotoMarkup, type Handle } from '../../ui/PhotoMarkup.tsx';
@@ -21,6 +24,12 @@ import { TopBar } from '../../ui/TopBar.tsx';
 import { calibrationNote, cropSize, defaultQuad, measureAll, orientPreset, planCalibration, type Reference } from './scanMath.ts';
 
 type Step = 'start' | 'camera' | 'working' | 'review' | 'results';
+
+/**
+ * Long edge of the working photo for scans. Detection runs at 1200 px and crops
+ * rarely need more; 2400 keeps the image tools' peak memory modest on phones.
+ */
+export const SCAN_MAX_PX = 2400;
 
 interface Photo {
   img: RGBAImage;
@@ -137,17 +146,34 @@ export function ScanArt() {
   const measured = useMemo(() => (plane ? measureAll(quads.map((q) => q.quad), plane) : null), [plane, quads]);
 
   // ── Photo intake ──
+  // Bumped on cancel so a late result from abandoned work is ignored.
+  const run = useRef(0);
+
+  function cancelWork() {
+    run.current++;
+    releaseCv();
+    info('Scan: cancelled by user');
+    setStep('start');
+  }
+
   async function process(get: () => Promise<{ img: RGBAImage; blob: Blob; straightened: boolean }>) {
+    const me = ++run.current;
     setStep('working');
     setError(undefined);
+    const t0 = performance.now();
     try {
       setStatus('Preparing photo…');
+      info('Scan: preparing photo');
       const { img, blob, straightened } = await get();
+      info(`Scan: photo ready ${img.width}×${img.height}${straightened ? ', straightened' : ''} (${Math.round(performance.now() - t0)} ms)`);
+      if (me !== run.current) return;
       const url = track(URL.createObjectURL(blob));
       const el = await loadImageEl(url);
       setStatus('Finding your art… The first time, this also downloads the measuring tools (about 3.5 MB).');
       const copy = cloneImage(img);
       const found = await cvCall('detect', { img: copy }, [copy.data.buffer]);
+      if (me !== run.current) return;
+      info(`Scan: found ${found.length} shape(s) (${Math.round(performance.now() - t0)} ms total)`);
       setPhoto({ img, url, el, straightened });
       const items = found.map((quad) => ({ id: newId(), quad }));
       setQuads(items);
@@ -155,21 +181,25 @@ export function ScanArt() {
       setRef(null);
       setStep('review');
     } catch (e) {
-      setError(`Something went wrong: ${(e as Error).message}. Try another photo.`);
+      if (me !== run.current) return;
+      logError('Scan failed:', e);
+      setError(`Something went wrong: ${(e as Error).message}.`);
       setStep('start');
     }
   }
 
   const fromShot = (shot: GuidedShot) =>
     process(async () => {
-      const s = await straighten(shot.blob, shot.gravity?.g ?? null, 'floor');
+      info(`Scan: camera shot ${shot.width}×${shot.height}, gravity ${shot.gravity ? 'yes' : 'no'}`);
+      const s = await straighten(shot.blob, shot.gravity?.g ?? null, 'floor', SCAN_MAX_PX);
       return { img: s.img, blob: s.blob, straightened: s.corrected };
     });
 
   const fromFile = (file: File | undefined) =>
     file &&
     process(async () => {
-      const img = await blobToRGBA(file, EDIT_MAX_PX);
+      info(`Scan: file ${file.type || 'unknown type'}, ${Math.round(file.size / 1024)} KB`);
+      const img = await blobToRGBA(file, SCAN_MAX_PX);
       return { img, blob: await rgbaToBlob(img, 0.92), straightened: false };
     });
 
@@ -212,6 +242,7 @@ export function ScanArt() {
       setResults(rs);
       setStep('results');
     } catch (e) {
+      logError('Scan: cropping failed:', e);
       setError(`Could not crop the pieces: ${(e as Error).message}`);
       setStep('review');
     }
@@ -287,10 +318,7 @@ export function ScanArt() {
       <section>
         <TopBar title="Scan art" backHref="#/art" />
         {step === 'working' ? (
-          <div className="card center" role="status" aria-live="polite">
-            <div className="spinner" aria-hidden="true" />
-            <p>{status}</p>
-          </div>
+          <WorkingPanel status={status} onCancel={cancelWork} />
         ) : (
           <div className="card">
             <h2>Photograph several pieces at once</h2>
@@ -309,7 +337,7 @@ export function ScanArt() {
                 <input ref={fileRef} type="file" accept="image/*" hidden onChange={(e) => void fromFile(e.target.files?.[0])} />
               </label>
             </div>
-            {error && <p className="error">{error}</p>}
+            {error && <ErrorDetails message={error} />}
           </div>
         )}
       </section>
@@ -454,7 +482,7 @@ export function ScanArt() {
               <span className="muted">{note.text}</span>
             </p>
           )}
-          {error && <p className="error">{error}</p>}
+          {error && <ErrorDetails message={error} />}
           <div className="actions">
             <button className="primary" disabled={!measured || artCount === 0} onClick={() => void toResults()}>
               {artCount > 0 ? `Measure ${artCount} piece${artCount === 1 ? '' : 's'}` : 'Measure'}

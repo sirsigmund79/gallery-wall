@@ -12,4 +12,10 @@ export interface Ops {
 export type Op = keyof Ops;
 
 export type Request = { [K in Op]: { id: number; op: K; payload: Ops[K]['req'] } }[Op];
-export type Response = { id: number; ok: true; result: unknown } | { id: number; ok: false; error: string };
+
+/** Replies to requests, plus unsolicited status/log messages from the worker. */
+export type Response =
+  | { id: number; ok: true; result: unknown; ms: number }
+  | { id: number; ok: false; error: string }
+  | { type: 'status'; stage: 'started' | 'ready' | 'failed'; ms: number; error?: string }
+  | { type: 'log'; level: 'info' | 'warn' | 'error'; msg: string };

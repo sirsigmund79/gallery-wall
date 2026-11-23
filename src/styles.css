@@ -248,3 +248,9 @@ fieldset.card { display: flex; flex-direction: column; gap: 12px; }
 .conf-check { background: #fff0cc; color: #7a5200; }
 .conf-low { background: #ffd9d6; color: #a1150b; }
 .mono { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 0.9rem; white-space: pre-wrap; }
+
+/* ───────── Diagnostics ───────── */
+.log, .log-tail { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 0.75rem; white-space: pre-wrap; word-break: break-word; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; max-height: 50vh; overflow: auto; text-align: left; }
+.log-tail { max-height: 9rem; margin: 8px 0; }
+.error-box { margin-top: 12px; }
+.error-box .actions { margin-top: 8px; }

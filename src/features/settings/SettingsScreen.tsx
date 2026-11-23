@@ -38,6 +38,9 @@ export function SettingsScreen() {
         <p className="hint">
           <a href="#/settings/sensors">Sensor check</a>: confirm the level guide reads your phone correctly.
         </p>
+        <p className="hint">
+          <a href="#/settings/diagnostics">Diagnostics</a>: test the image tools and see what went wrong, with a report you can copy.
+        </p>
       </div>
       <div className="card">
         <h2>About</h2>

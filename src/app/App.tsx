@@ -13,6 +13,7 @@ const WallEditor = lazy(() => import('../features/editor/WallEditor.tsx').then((
 
 // Scanning pulls in the CV worker client; load it only when used.
 const ScanArt = lazy(() => import('../features/scan/ScanArt.tsx').then((m) => ({ default: m.ScanArt })));
+const Diagnostics = lazy(() => import('../features/settings/Diagnostics.tsx').then((m) => ({ default: m.Diagnostics })));
 const SensorCheck = lazy(() => import('../features/settings/SensorCheck.tsx').then((m) => ({ default: m.SensorCheck })));
 
 const loading = <p className="muted center">Loading…</p>;
@@ -33,6 +34,12 @@ function Screen({ route }: { route: Route }) {
       </Suspense>
     );
   if (route.tab === 'art') return a ? <PieceEditor key={a} id={a} /> : <ArtScreen />;
+  if (route.tab === 'settings' && a === 'diagnostics')
+    return (
+      <Suspense fallback={loading}>
+        <Diagnostics />
+      </Suspense>
+    );
   if (route.tab === 'settings' && a === 'sensors')
     return (
       <Suspense fallback={loading}>
