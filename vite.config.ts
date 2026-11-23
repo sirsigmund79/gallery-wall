@@ -24,6 +24,8 @@ export default defineConfig(({ mode }) => {
       ...(useHttps ? [basicSsl()] : []),
       VitePWA({
         registerType: 'autoUpdate',
+      // Icons are already matched by workbox.globPatterns; don't list them twice.
+      includeManifestIcons: false,
         manifest: {
           name: 'HangPlan',
           short_name: 'HangPlan',
