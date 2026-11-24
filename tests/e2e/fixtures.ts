@@ -122,9 +122,9 @@ export async function addPiece(page: Page, name: string, w: string, h: string) {
 export async function addWallWithDoor(page: Page, opts: { name?: string; room?: string } = {}) {
   await page.goto('/#/walls/new');
   await page.locator('input[type=file]').setInputFiles({ name: 'wall.png', mimeType: 'image/png', buffer: await wallPhotoPng(page) });
-  await page.getByText('Tap something you know the size of').waitFor({ timeout: 60_000 });
+  await page.getByText('Tap things on the wall').waitFor({ timeout: 60_000 });
   await clickImagePoint(page, (WALL.door.x1 + WALL.door.x2) / 2, (WALL.door.top + WALL.door.bottom) / 2, WALL.widthPx, WALL.heightPx);
-  await page.getByRole('button', { name: 'I know its size' }).click();
+  await page.getByRole('radio', { name: 'I know its size' }).click();
   await page.getByRole('button', { name: 'Door 36 × 80 in' }).click();
   await page.getByText('Is the green line the floor?').waitFor();
   await page.getByRole('button', { name: 'Yes' }).click();

@@ -11,11 +11,17 @@ export interface Handle {
   axis?: 'x' | 'y';
   label?: string;
   color?: string;
+  /**
+   * Draw the grip this many screen px away from the point (dx, dy), joined by a
+   * short line. Keeps the grips of a tiny rectangle from overlapping.
+   */
+  grip?: Pt;
 }
 
 interface Props {
   image: HTMLImageElement;
-  handles: Handle[];
+  /** Handles, or a function of `unit` (image px per screen px) for size-aware grips. */
+  handles: Handle[] | ((unit: number) => Handle[]);
   onMove: (id: string, at: Pt) => void;
   onActivate?: (id: string) => void;
   /** Extra SVG drawn under the handles; receives the px size of 1 screen px in image units. */
@@ -26,7 +32,7 @@ const HANDLE_PX = 22; // touch target radius on screen
 const LOUPE_PX = 132;
 const LOUPE_ZOOM = 4; // relative to the on-screen photo
 
-export function PhotoMarkup({ image, handles, onMove, onActivate, children }: Props) {
+export function PhotoMarkup({ image, handles: handlesProp, onMove, onActivate, children }: Props) {
   const wrap = useRef<HTMLDivElement>(null);
   const svg = useRef<SVGSVGElement>(null);
   const loupe = useRef<HTMLCanvasElement>(null);
@@ -44,6 +50,7 @@ export function PhotoMarkup({ image, handles, onMove, onActivate, children }: Pr
   }, []);
 
   const unit = displayW ? W / displayW : 1; // image px per screen px
+  const handles = typeof handlesProp === 'function' ? handlesProp(unit) : handlesProp;
 
   const toImage = useCallback(
     (clientX: number, clientY: number): Pt => {
@@ -82,10 +89,11 @@ export function PhotoMarkup({ image, handles, onMove, onActivate, children }: Pr
     onActivate?.(h.id);
     // Keep the offset between finger and handle so the handle doesn't jump under the finger.
     const start = toImage(e.clientX, e.clientY);
-    const off: Pt = [h.at[0] - start[0], h.at[1] - start[1]];
+    const g: Pt = h.grip ? [h.grip[0] * unit, h.grip[1] * unit] : [0, 0];
+    const off: Pt = [h.at[0] + g[0] - start[0], h.at[1] + g[1] - start[1]];
     const move = (ev: PointerEvent) => {
       const p = toImage(ev.clientX, ev.clientY);
-      let at: Pt = [clamp(p[0] + off[0], 0, W), clamp(p[1] + off[1], 0, H)];
+      let at: Pt = [clamp(p[0] + off[0] - g[0], 0, W), clamp(p[1] + off[1] - g[1], 0, H)];
       if (h.axis === 'x') at = [at[0], h.at[1]];
       if (h.axis === 'y') at = [h.at[0], at[1]];
       onMove(h.id, at);
@@ -114,8 +122,11 @@ export function PhotoMarkup({ image, handles, onMove, onActivate, children }: Pr
       <img src={image.src} alt="" draggable={false} />
       <svg ref={svg} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none">
         {children?.(unit)}
-        {handles.map((h) => (
-          <g key={h.id} transform={`translate(${h.at[0]} ${h.at[1]})`}>
+        {handles.map((h) => {
+          const gx = (h.grip?.[0] ?? 0) * unit, gy = (h.grip?.[1] ?? 0) * unit;
+          return (
+          <g key={h.id} transform={`translate(${h.at[0] + gx} ${h.at[1] + gy})`}>
+            {h.grip && <line x1={0} y1={0} x2={-gx} y2={-gy} stroke={h.color ?? '#ff3b30'} strokeWidth={1.5 * unit} pointerEvents="none" />}
             <circle
               r={HANDLE_PX * unit}
               className="hit"
@@ -127,7 +138,8 @@ export function PhotoMarkup({ image, handles, onMove, onActivate, children }: Pr
             <circle r={7 * unit} fill="none" stroke={h.color ?? '#ff3b30'} strokeWidth={2.5 * unit} pointerEvents="none" />
             <circle r={1.5 * unit} fill={h.color ?? '#ff3b30'} pointerEvents="none" />
           </g>
-        ))}
+          );
+        })}
       </svg>
       {drag && <canvas ref={loupe} className="loupe" style={{ top: loupeTop, left: loupeLeft, width: LOUPE_PX, height: LOUPE_PX }} />}
     </div>

@@ -4,11 +4,16 @@ import type { Pt } from '../geometry/vec.ts';
 import type { RGBAImage } from './types.ts';
 
 export interface Ops {
-  detect: { req: { img: RGBAImage }; res: Quad[] };
+  detect: { req: { img: RGBAImage; keepNested?: boolean }; res: Quad[] };
   warp: { req: { img: RGBAImage; H: Mat3; width: number; height: number }; res: RGBAImage };
   crops: { req: { img: RGBAImage; items: { quad: Quad; width: number; height: number }[] }; res: RGBAImage[] };
   perspective: { req: { src: Pt[]; dst: Pt[] }; res: Mat3 };
-  floorLine: { req: { img: RGBAImage }; res: number | null };
+  floorLine: { req: { img: RGBAImage; region?: 'floor' | 'ceiling' }; res: number | null };
+  /** Everything a wall photo needs in one pass: rectangles (nested kept), floor, ceiling, doorways. */
+  wallFeatures: {
+    req: { img: RGBAImage };
+    res: { quads: Quad[]; floorY: number | null; ceilingY: number | null; doorways: { quad: Quad; topVisible: boolean }[] };
+  };
 }
 export type Op = keyof Ops;
 

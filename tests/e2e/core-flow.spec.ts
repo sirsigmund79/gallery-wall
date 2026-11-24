@@ -26,9 +26,9 @@ test('add art, calibrate a wall from one measurement, place art, read nail posit
   // ── Wall: tap the door, pick its standard size, confirm the floor ──
   await page.goto('/#/walls/new');
   await page.locator('input[type=file]').setInputFiles({ name: 'wall.png', mimeType: 'image/png', buffer: await wallPhotoPng(page) });
-  await expect(page.getByText('Tap something you know the size of')).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByText('Tap things on the wall')).toBeVisible({ timeout: 60_000 });
   await clickImagePoint(page, (WALL.door.x1 + WALL.door.x2) / 2, (WALL.door.top + WALL.door.bottom) / 2, WALL.widthPx, WALL.heightPx);
-  await page.getByRole('button', { name: 'I know its size' }).click();
+  await page.getByRole('radio', { name: 'I know its size' }).click();
   await page.getByRole('button', { name: 'Door 36 × 80 in' }).click();
   await expect(page.getByText('Is the green line the floor?')).toBeVisible();
   await page.getByRole('button', { name: 'Yes' }).click();

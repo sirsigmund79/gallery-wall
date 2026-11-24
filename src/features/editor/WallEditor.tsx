@@ -276,7 +276,7 @@ export function WallEditor({ wallId, layoutId }: { wallId: string; layoutId?: st
               )}
               <span className="muted">
                 <QualityBadge quality={wall.calibration.quality} pct={accuracyPct(wall.calibration)} />{' '}
-                <a href={`#/walls/${wall.id}/calibrate`}>Calibration</a>
+                <a href={`#/walls/${wall.id}/objects`}>What’s on this wall</a> · <a href={`#/walls/${wall.id}/calibrate`}>Calibration</a>
               </span>
             </div>
             {!placements.length && <p className="hint">Tap “Add art” to place pieces yourself, or “Suggest” for ideas that fit this wall.</p>}

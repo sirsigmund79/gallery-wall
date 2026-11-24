@@ -42,8 +42,47 @@ function rgba(): Uint8ClampedArray {
 
 /** Write the Y4M file (I420, a few identical frames) and return its path. */
 export function writeArtWallY4m(): string {
-  const { width: W, height: H } = ARTWALL;
-  const px = rgba();
+  return writeY4m('artwall', ARTWALL.width, ARTWALL.height, rgba());
+}
+
+/** Hallway like the owner's photo: ceiling, panel moulding with a switch plate inside, doorway cut off on the right. */
+export const HALLWAY = {
+  width: 1200,
+  height: 1600,
+  panel: { x0: 250, y0: 250, x1: 820, y1: 1250 },
+  switchPlate: { x0: 760, y0: 700, x1: 800, y1: 760 },
+  floorY: 1470,
+};
+
+export function writeHallwayY4m(): string {
+  const { width: W, height: H } = HALLWAY;
+  const d = new Uint8ClampedArray(W * H * 4);
+  const fill = (x0: number, y0: number, x1: number, y1: number, c: number[]) => {
+    for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) d.set([c[0]!, c[1]!, c[2]!, 255], (y * W + x) * 4);
+  };
+  const frame = (x0: number, y0: number, x1: number, y1: number, t: number, c: number[]) => {
+    fill(x0, y0, x1, y0 + t, c); fill(x0, y1 - t, x1, y1, c); fill(x0, y0, x0 + t, y1, c); fill(x1 - t, y0, x1, y1, c);
+  };
+  fill(0, 0, W, H, [222, 214, 196]);
+  fill(0, 0, W, 90, [190, 186, 180]);
+  fill(0, 1380, W, 1470, [245, 245, 242]);
+  fill(0, 1470, W, H, [150, 100, 55]);
+  const P = HALLWAY.panel;
+  frame(P.x0, P.y0, P.x1, P.y1, 12, [246, 244, 238]);
+  frame(P.x0 + 12, P.y0 + 12, P.x1 - 12, P.y1 - 12, 3, [185, 178, 160]);
+  const S = HALLWAY.switchPlate;
+  fill(S.x0, S.y0, S.x1, S.y1, [250, 250, 250]);
+  frame(S.x0, S.y0, S.x1, S.y1, 2, [160, 155, 150]);
+  fill(935, 312, W, 1470, [70, 62, 55]);
+  fill(900, 280, 935, 1470, [248, 248, 245]);
+  fill(900, 280, W, 312, [248, 248, 245]);
+  let seed = 3;
+  const r = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 32);
+  for (let i = 0; i < d.length; i++) if (i % 4 !== 3) d[i] = d[i]! + Math.round((r() - 0.5) * 8);
+  return writeY4m('hallway', W, H, d);
+}
+
+function writeY4m(name: string, W: number, H: number, px: Uint8ClampedArray): string {
   const Y = Buffer.alloc(W * H), U = Buffer.alloc((W / 2) * (H / 2)), V = Buffer.alloc((W / 2) * (H / 2));
   for (let y = 0; y < H; y++)
     for (let x = 0; x < W; x++) {
@@ -57,7 +96,7 @@ export function writeArtWallY4m(): string {
       }
     }
   const frame = Buffer.concat([Buffer.from('FRAME\n'), Y, U, V]);
-  const file = join(tmpdir(), `hangplan-artwall-${W}x${H}.y4m`);
+  const file = join(tmpdir(), `hangplan-${name}-${W}x${H}.y4m`);
   writeFileSync(file, Buffer.concat([Buffer.from(`YUV4MPEG2 W${W} H${H} F30:1 Ip A1:1 C420jpeg\n`), frame, frame, frame]));
   return file;
 }

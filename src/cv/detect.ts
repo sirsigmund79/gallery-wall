@@ -28,20 +28,28 @@ interface Candidate {
   score: number;
 }
 
-function plausible(q: Quad, longEdge: number): boolean {
+/** Size limits for candidates. Walls need smaller ones (switch plates, outlets). */
+export interface Limits {
+  minAreaFrac: number;
+  minSideFrac: number;
+}
+const FLOOR_LIMITS: Limits = { minAreaFrac: MIN_AREA_FRAC, minSideFrac: MIN_SIDE_FRAC };
+const WALL_LIMITS: Limits = { minAreaFrac: 0.0005, minSideFrac: 0.015 };
+
+function plausible(q: Quad, longEdge: number, lim: Limits): boolean {
   const sides = q.map((p, i) => Math.hypot(q[(i + 1) % 4]![0] - p[0], q[(i + 1) % 4]![1] - p[1]));
   const min = Math.min(...sides);
-  return min >= longEdge * MIN_SIDE_FRAC && Math.max(...sides) / min <= MAX_ASPECT;
+  return min >= longEdge * lim.minSideFrac && Math.max(...sides) / min <= MAX_ASPECT;
 }
 
-function contourToCandidate(cv: CV, cnt: Mat, imgArea: number, longEdge: number): Candidate | null {
-  const c = rawCandidate(cv, cnt, imgArea);
-  return c && plausible(c.quad, longEdge) ? c : null;
+function contourToCandidate(cv: CV, cnt: Mat, imgArea: number, longEdge: number, lim: Limits): Candidate | null {
+  const c = rawCandidate(cv, cnt, imgArea, lim);
+  return c && plausible(c.quad, longEdge, lim) ? c : null;
 }
 
-function rawCandidate(cv: CV, cnt: Mat, imgArea: number): Candidate | null {
+function rawCandidate(cv: CV, cnt: Mat, imgArea: number, lim: Limits): Candidate | null {
   const area = cv.contourArea(cnt);
-  if (area < imgArea * MIN_AREA_FRAC || area > imgArea * MAX_AREA_FRAC) return null;
+  if (area < imgArea * lim.minAreaFrac || area > imgArea * MAX_AREA_FRAC) return null;
   const peri = cv.arcLength(cnt, true);
   const approx = new cv.Mat();
   try {
@@ -69,7 +77,7 @@ function rawCandidate(cv: CV, cnt: Mat, imgArea: number): Candidate | null {
   return null;
 }
 
-function collect(cv: CV, bin: Mat, out: Candidate[], mode = cv.RETR_LIST) {
+function collect(cv: CV, bin: Mat, out: Candidate[], mode = cv.RETR_LIST, lim: Limits = FLOOR_LIMITS) {
   const contours = new cv.MatVector();
   const hierarchy = new cv.Mat();
   const imgArea = bin.rows * bin.cols;
@@ -78,7 +86,7 @@ function collect(cv: CV, bin: Mat, out: Candidate[], mode = cv.RETR_LIST) {
     cv.findContours(bin, contours, hierarchy, mode, cv.CHAIN_APPROX_SIMPLE);
     for (let i = 0; i < contours.size(); i++) {
       const c = contours.get(i);
-      const cand = contourToCandidate(cv, c, imgArea, longEdge);
+      const cand = contourToCandidate(cv, c, imgArea, longEdge, lim);
       if (cand) out.push(cand);
       c.delete();
     }
@@ -89,7 +97,7 @@ function collect(cv: CV, bin: Mat, out: Candidate[], mode = cv.RETR_LIST) {
 }
 
 /** Keep the best of overlapping duplicates, then drop quads nested inside others (mats, prints inside frames). */
-export function dedupe(cands: Candidate[]): Quad[] {
+export function dedupe(cands: Candidate[], keepNested = false): Quad[] {
   const sorted = [...cands].sort((a, b) => b.score - a.score || b.area - a.area);
   const kept: Candidate[] = [];
   for (const c of sorted) {
@@ -97,7 +105,9 @@ export function dedupe(cands: Candidate[]): Quad[] {
     if (dup < 0) kept.push(c);
     else if (c.area > kept[dup]!.area * 1.02 && c.score > kept[dup]!.score - 0.05) kept[dup] = c; // prefer the outer edge of a frame
   }
-  const outer = kept.filter((c) => !kept.some((o) => o !== c && o.area > c.area * 1.05 && bboxContains(o.quad, c.quad)));
+  // On the floor, a quad inside another is a mat or the print inside a frame:
+  // drop it. On a wall it may be a switch plate inside a panel: keep it.
+  const outer = keepNested ? kept : kept.filter((c) => !kept.some((o) => o !== c && o.area > c.area * 1.05 && bboxContains(o.quad, c.quad)));
   // Reading order: top-to-bottom rows, then left-to-right.
   return outer
     .map((c) => c.quad)
@@ -112,7 +122,7 @@ export function dedupe(cands: Candidate[]): Quad[] {
 export type DetectDebug = (cands: { quad: Quad; score: number; support: number }[]) => void;
 
 /** Find rectangular pieces in an image. Returns quads in the input image's pixel coordinates. */
-export function detectQuads(cv: CV, img: RGBAImage, debug?: DetectDebug): Quad[] {
+export function detectQuads(cv: CV, img: RGBAImage, debug?: DetectDebug, opts: { keepNested?: boolean } = {}): Quad[] {
   const src = cv.matFromImageData(img);
   const small = new cv.Mat();
   const gray = new cv.Mat();
@@ -127,30 +137,31 @@ export function detectQuads(cv: CV, img: RGBAImage, debug?: DetectDebug): Quad[]
     cv.cvtColor(small, gray, cv.COLOR_RGBA2GRAY);
     cv.GaussianBlur(gray, blur, new cv.Size(5, 5), 0);
     const cands: Candidate[] = [];
+    const lim = opts.keepNested ? WALL_LIMITS : FLOOR_LIMITS;
 
     // Pass 0 (most robust for art on a floor): pixels that differ from the
     // floor colour, estimated from the photo's border. Handles textured floors
     // where edges are broken up by grain.
     floorMask(cv, small, bin);
-    collect(cv, bin, cands, cv.RETR_EXTERNAL);
+    collect(cv, bin, cands, cv.RETR_EXTERNAL, lim);
 
     // Pass 0b: on a textured floor (wood grain, carpet), smooth regions stand
     // out even when a frame is the same colour as the floor.
-    if (smoothMask(cv, gray, bin)) collect(cv, bin, cands, cv.RETR_EXTERNAL);
+    if (smoothMask(cv, gray, bin)) collect(cv, bin, cands, cv.RETR_EXTERNAL, lim);
 
     // Pass 1: Canny edges, closed so frame outlines become single contours.
     // Fixed gradient thresholds: brightness-scaled ("auto") thresholds get too
     // insensitive on bright walls, missing white frames on pale paint.
     cv.Canny(blur, edges, CANNY_LO, CANNY_HI);
     cv.morphologyEx(edges, edges, cv.MORPH_CLOSE, kernel, new cv.Point(-1, -1), 2);
-    collect(cv, edges, cands);
+    collect(cv, edges, cands, cv.RETR_LIST, lim);
 
     // Pass 2: Otsu threshold, both polarities (dark art on light floor and vice versa).
     cv.threshold(blur, bin, 0, 255, cv.THRESH_BINARY + cv.THRESH_OTSU);
     cv.morphologyEx(bin, bin, cv.MORPH_OPEN, kernel, new cv.Point(-1, -1), 2);
-    collect(cv, bin, cands);
+    collect(cv, bin, cands, cv.RETR_LIST, lim);
     cv.bitwise_not(bin, bin);
-    collect(cv, bin, cands);
+    collect(cv, bin, cands, cv.RETR_LIST, lim);
 
     // Snap every candidate to the true edges at full resolution (detection ran
     // downscaled and the masks are blurred), and score it by how well real
@@ -165,7 +176,7 @@ export function detectQuads(cv: CV, img: RGBAImage, debug?: DetectDebug): Quad[]
       return { quad: r.quad, area: polygonArea(r.quad), score: c.score + r.support, support: r.support };
     });
     debug?.(refined.map(({ quad, score, support }) => ({ quad, score, support })));
-    return dedupe(refined);
+    return dedupe(refined, opts.keepNested);
   } finally {
     [src, small, gray, blur, edges, bin, kernel, fullGray].forEach((m) => m.delete());
   }
@@ -316,7 +327,7 @@ const FLOOR_MAX_PX = 1000;
  * strongest long, near-horizontal edge in the lower part of the image
  * (skirting bottom, floor/wall boundary). Returns y in input pixels, or null.
  */
-export function suggestFloorLine(cv: CV, img: RGBAImage): number | null {
+export function suggestFloorLine(cv: CV, img: RGBAImage, region: 'floor' | 'ceiling' = 'floor'): number | null {
   const src = cv.matFromImageData(img);
   const small = new cv.Mat();
   const gray = new cv.Mat();
@@ -328,7 +339,7 @@ export function suggestFloorLine(cv: CV, img: RGBAImage): number | null {
     cv.resize(src, small, new cv.Size(W, H), 0, 0, cv.INTER_AREA);
     cv.cvtColor(small, gray, cv.COLOR_RGBA2GRAY);
     cv.GaussianBlur(gray, gray, new cv.Size(5, 5), 0);
-    cv.Canny(gray, edges, 40, 120);
+    cv.Canny(gray, edges, 15, 45); // ceilings meet walls at low contrast
     cv.HoughLinesP(edges, lines, 1, Math.PI / 180, 60, W * 0.2, 15);
     // Sum the length of near-horizontal segments per 4 px band, in the lower 55%.
     const band = 4;
@@ -340,14 +351,83 @@ export function suggestFloorLine(cv: CV, img: RGBAImage): number | null {
       const angle = (Math.abs(Math.atan2(y2 - y1, x2 - x1)) * 180) / Math.PI;
       if (Math.min(angle, 180 - angle) > 4) continue;
       const y = (y1 + y2) / 2;
-      if (y < H * 0.45 || y > H * 0.985) continue;
+      if (region === 'floor' ? y < H * 0.45 || y > H * 0.985 : y > H * 0.4 || y < H * 0.015) continue;
       const b = Math.round(y / band);
       score.set(b, (score.get(b) ?? 0) + len);
     }
     let best: [number, number] | null = null;
-    for (const [b, s] of score) if (!best || s > best[1] || (s === best[1] && b > best[0])) best = [b, s];
+    for (const [b, s] of score) if (!best || s > best[1] || (s === best[1] && (region === 'floor' ? b > best[0] : b < best[0]))) best = [b, s];
     if (!best || best[1] < W * 0.3) return null;
     return (best[0] * band) / k;
+  } finally {
+    [src, small, gray, edges, lines].forEach((m) => m.delete());
+  }
+}
+
+export interface Doorway {
+  quad: Quad;
+  /** False when the door's top is cut off by the photo's top edge (width-only reference). */
+  topVisible: boolean;
+}
+
+/**
+ * Doorways in a levelled wall photo: pairs of long near-vertical edges that
+ * reach down to the floor (or the photo's bottom), standing door-width apart
+ * (0.3–0.55 of their height). Works when the top of the door is out of frame,
+ * where rectangle detection can't.
+ */
+export function detectDoorways(cv: CV, img: RGBAImage, floorY: number | null): Doorway[] {
+  const src = cv.matFromImageData(img);
+  const small = new cv.Mat();
+  const gray = new cv.Mat();
+  const edges = new cv.Mat();
+  const lines = new cv.Mat();
+  try {
+    const k = Math.min(1, FLOOR_MAX_PX / Math.max(img.width, img.height));
+    const W = Math.round(img.width * k), H = Math.round(img.height * k);
+    cv.resize(src, small, new cv.Size(W, H), 0, 0, cv.INTER_AREA);
+    cv.cvtColor(small, gray, cv.COLOR_RGBA2GRAY);
+    cv.GaussianBlur(gray, gray, new cv.Size(5, 5), 0);
+    cv.Canny(gray, edges, 30, 90);
+    cv.HoughLinesP(edges, lines, 1, Math.PI / 180, 60, H * 0.3, 20);
+    const floor = floorY !== null ? floorY * k : H;
+    // Merge near-vertical segments into lines by x (6 px buckets).
+    const byX = new Map<number, { x: number; y0: number; y1: number; n: number }>();
+    const d: Int32Array = lines.data32S;
+    for (let i = 0; i < lines.rows; i++) {
+      const [x1, y1, x2, y2] = [d[i * 4]!, d[i * 4 + 1]!, d[i * 4 + 2]!, d[i * 4 + 3]!];
+      const ang = (Math.abs(Math.atan2(x2 - x1, y2 - y1)) * 180) / Math.PI;
+      if (Math.min(ang, 180 - ang) > 3) continue;
+      const x = (x1 + x2) / 2;
+      const b = Math.round(x / 6);
+      const cur = byX.get(b) ?? { x: 0, y0: Infinity, y1: -Infinity, n: 0 };
+      cur.x = (cur.x * cur.n + x) / (cur.n + 1);
+      cur.n++;
+      cur.y0 = Math.min(cur.y0, y1, y2);
+      cur.y1 = Math.max(cur.y1, y1, y2);
+      byX.set(b, cur);
+    }
+    const verts = [...byX.values()].filter((v) => v.y1 - v.y0 >= H * 0.45 && v.y1 >= floor - H * 0.06).sort((a, b) => a.x - b.x);
+    const out: { d: Doorway; score: number; x0: number; x1: number }[] = [];
+    for (let i = 0; i < verts.length; i++)
+      for (let j = i + 1; j < verts.length; j++) {
+        const a = verts[i]!, b = verts[j]!;
+        const top = Math.max(a.y0, b.y0), bottom = Math.min(floor, Math.max(a.y1, b.y1));
+        const h = bottom - Math.min(a.y0, b.y0);
+        const w = b.x - a.x;
+        if (Math.abs(a.y0 - b.y0) > h * 0.15) continue;
+        const topVisible = top > H * 0.03;
+        // A full door is 0.3–0.55 as wide as tall; with the top cut off it only looks narrower.
+        const ratio = w / h;
+        if (topVisible ? ratio < 0.3 || ratio > 0.55 : ratio < 0.2 || ratio > 0.55) continue;
+        const quad: Quad = [[a.x / k, top / k], [b.x / k, top / k], [b.x / k, bottom / k], [a.x / k, bottom / k]];
+        out.push({ d: { quad, topVisible }, score: (a.y1 - a.y0) + (b.y1 - b.y0), x0: a.x, x1: b.x });
+      }
+    // Best first; drop candidates overlapping a better one (door casings give several parallel edges).
+    out.sort((p, q) => q.score - p.score);
+    const kept: typeof out = [];
+    for (const c of out) if (!kept.some((k2) => c.x0 < k2.x1 && k2.x0 < c.x1)) kept.push(c);
+    return kept.slice(0, 2).map((c) => c.d);
   } finally {
     [src, small, gray, edges, lines].forEach((m) => m.delete());
   }

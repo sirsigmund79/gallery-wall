@@ -303,3 +303,9 @@ button.link.small { font-size: 0.8rem; min-height: 36px; }
 }
 .plan-card { display: flex; flex-direction: column; gap: 10px; }
 .plan-card h2 { margin: 0; }
+
+/* ───────── Wall tagging ───────── */
+.tag-panel { display: flex; flex-direction: column; gap: 10px; margin: 0; }
+.tag-head { display: flex; justify-content: space-between; align-items: center; }
+.chip-btn.small { min-height: 32px; font-size: 0.8rem; }
+.tag-panel fieldset.card { margin: 0; padding: 8px 10px; }

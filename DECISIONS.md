@@ -318,3 +318,28 @@ Deviations from the spec (`docs/SPEC.md`), and choices the spec left open. Newes
     the original is always one tap away.
 - **Same rule elsewhere:** Scan art's `wall-level` view now uses a similarity fit like `top-down`,
   and Plan this wall keeps level-camera photos as taken.
+
+## Tag what's on the wall (after the hallway / TV wall feedback)
+
+- **One interaction for everything on a wall:** tap an outline → *What is this?* → **I know its
+  size** (reference) / **Hang art inside this** (sets `Wall.bounds`, e.g. a panel moulding) /
+  **Keep art off this** (+ TV, Window, Door, Furniture, Other → `Wall.keepOut[].kind`) / **Not
+  important**. Shared `WallTagger` (`src/ui/WallTagger.tsx`) is used in Add a wall's Size step and
+  in the new **What's on this wall** screen (`#/walls/:id/objects`), linked from the editor and the
+  Home ⋯ menu.
+- **Selection:** outlines are drawn largest-first, so smaller ones (a switch inside a panel) sit on
+  top and win the tap. Unselected outlines are thin dashed lines with no fill. When a selected
+  outline is under 70 screen px, its corner **grips move 26 px outside the corners** along the
+  diagonals (with a connecting line) so they never overlap (`Handle.grip` in `PhotoMarkup`).
+- **Wall detection (`wallFeatures` worker op):** rectangles with nested ones kept and smaller size
+  limits (switch plates); floor and **ceiling** lines (`suggestFloorLine(…, 'ceiling')`; line
+  Canny thresholds lowered to 15/45 for low-contrast ceilings); **doorways** from pairs of long
+  vertical edges reaching the floor (0.3–0.55 wide-to-tall, or a narrower look when the top is cut
+  off → width-only reference). Guesses: dark 1.5–2.2:1 → "TV?"; doorway → "Door?". They're shown
+  as labels and confirmed with one tap.
+- **Floor to ceiling:** when both lines are found, one tap on 8 ft / 9 ft / 10 ft gives a large,
+  easy reference instead of a tiny switch plate.
+- **Edge refinement now prefers the outermost strong edge** (≥ 60% of the strongest) and takes each
+  side's light/dark direction from that outermost edge. A switch plate's thin grey outline had
+  pulled corners onto its inner edge: about 10% too small on a 40 px plate. It applies to art scans
+  too (a frame's true boundary is its outside edge). All detection tests still pass.

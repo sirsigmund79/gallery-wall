@@ -80,6 +80,9 @@ export interface Layout {
   updatedAt: number;
 }
 
+/** What a no-art zone is. TV and furniture are "anchors" art sits above. */
+export type KeepOutKind = 'tv' | 'window' | 'door' | 'furniture' | 'other';
+
 export interface Wall {
   id: string;
   name: string;
@@ -102,7 +105,7 @@ export interface Wall {
   /** Cover current spots with a flat patch of the surrounding wall colour. */
   coverSpots?: boolean;
   /** Areas suggestions must not cover (doors, windows…), in wall mm. */
-  keepOut?: { x: Mm; y: Mm; w: Mm; h: Mm; label: string }[];
+  keepOut?: { x: Mm; y: Mm; w: Mm; h: Mm; label: string; kind?: KeepOutKind }[];
   foreground: ForegroundObject[];
   layouts: Layout[];
   createdAt: number;

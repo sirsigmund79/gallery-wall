@@ -2,7 +2,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { applyH, invert, type Mat3 } from '../geometry/mat3.ts';
 import { measureQuad, similarityFit, type Quad } from '../geometry/quad.ts';
 import { dist, type Pt } from '../geometry/vec.ts';
-import { detectQuads, perspectiveTransform, rectifyQuad, suggestFloorLine } from './detect.ts';
+import { detectDoorways, detectQuads, perspectiveTransform, rectifyQuad, suggestFloorLine } from './detect.ts';
 import { loadCvForTests } from '../../tests/cv.ts';
 import type { CV, RGBAImage } from './types.ts';
 
@@ -220,5 +220,61 @@ describe('suggestFloorLine', () => {
   });
   it('returns null when there is no floor in view', () => {
     expect(suggestFloorLine(cv, wallWithFloor(null, 2))).toBeNull();
+  });
+});
+
+/** Hallway wall like the owner's photo: ceiling, panel moulding with a switch inside, doorway on the right, floor. */
+function hallway(seed: number): RGBAImage {
+  const r = rng(seed);
+  const W = 1400, H = 1600;
+  const m = new cv.Mat(H, W, cv.CV_8UC4, new cv.Scalar(222, 214, 196, 255));
+  const rect = (x0: number, y0: number, x1: number, y1: number, c: number[], t = -1) =>
+    cv.rectangle(m, new cv.Point(x0, y0), new cv.Point(x1, y1), new cv.Scalar(c[0], c[1], c[2], 255), t);
+  rect(0, 0, W, 90, [190, 186, 180]); // ceiling
+  rect(0, 1380, W, 1470, [245, 245, 242]); // skirting
+  rect(0, 1470, W, H, [150, 100, 55]); // floor
+  // Panel moulding: raised outline (light) with a shadow line.
+  rect(250, 250, 820, 1250, [246, 244, 238], 10);
+  rect(262, 262, 808, 1238, [185, 178, 160], 2);
+  // Switch plate inside the panel, near its right edge.
+  rect(760, 700, 800, 760, [250, 250, 250]);
+  rect(760, 700, 800, 760, [170, 165, 160], 2);
+  // Doorway on the right: casing (white) both sides, dark opening between, reaching the floor.
+  rect(935, 312, 1335, 1470, [70, 62, 55]); // opening (room beyond), ~0.34 wide-to-tall
+  rect(900, 280, 935, 1470, [248, 248, 245]); // left casing
+  rect(1335, 280, 1370, 1470, [248, 248, 245]); // right casing
+  rect(900, 280, 1370, 312, [248, 248, 245]); // head casing
+  const data = new Uint8ClampedArray(m.data);
+  m.delete();
+  for (let i = 0; i < data.length; i++) if (i % 4 !== 3) data[i] = data[i]! + Math.round((r() - 0.5) * 8);
+  return { data, width: W, height: H };
+}
+
+describe('wall features (hallway)', () => {
+  it('keeps the switch plate inside the panel moulding when keepNested is on', () => {
+    const img = hallway(1);
+    const near = (q: Quad, x0: number, y0: number, x1: number, y1: number, tol = 14) =>
+      Math.abs(q[0][0] - x0) < tol && Math.abs(q[0][1] - y0) < tol && Math.abs(q[2][0] - x1) < tol && Math.abs(q[2][1] - y1) < tol;
+    const wall = detectQuads(cv, img, undefined, { keepNested: true });
+    expect(wall.some((q) => near(q, 245, 245, 825, 1255))).toBe(true); // panel
+    expect(wall.some((q) => near(q, 760, 700, 800, 760, 6))).toBe(true); // switch
+    // Floor mode (default) drops it, as before.
+    expect(detectQuads(cv, img).some((q) => near(q, 760, 700, 800, 760, 6))).toBe(false);
+  });
+  it('finds the floor and ceiling lines', () => {
+    const img = hallway(2);
+    expect(Math.abs(suggestFloorLine(cv, img, 'floor')! - 1470)).toBeLessThan(10);
+    expect(Math.abs(suggestFloorLine(cv, img, 'ceiling')! - 90)).toBeLessThan(10);
+  });
+  it('finds the doorway from its vertical edges', () => {
+    const img = hallway(3);
+    const doors = detectDoorways(cv, img, 1470);
+    expect(doors.length).toBeGreaterThan(0);
+    const d = doors[0]!;
+    const w = d.quad[1][0] - d.quad[0][0];
+    expect(d.quad[0][0]).toBeGreaterThan(880);
+    expect(d.quad[1][0]).toBeLessThan(1390);
+    expect(w).toBeGreaterThan(380);
+    expect(d.quad[2][1]).toBeGreaterThan(1440);
   });
 });

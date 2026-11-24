@@ -8,6 +8,9 @@
 import type { Quad } from '../geometry/quad.ts';
 import type { Pt } from '../geometry/vec.ts';
 
+/** An outer edge at least this strong (vs the strongest) is preferred. */
+const OUTER_EDGE_RATIO = 0.6;
+
 export interface GrayImage {
   data: Float32Array | Uint8Array | Uint8ClampedArray;
   width: number;
@@ -128,16 +131,37 @@ export function refineQuadScored(g: GrayImage, q: Quad, opts: RefineOptions = {}
       }
       return { best, bestV };
     };
+    // Polarity vote on each sample's *outermost* strong edge (either direction):
+    // a white switch plate with a grey outline has its true (outer) edge going
+    // dark, while the stronger inner edge goes light.
     let vote = 0;
     for (const { grad } of profiles) {
-      const up = peak(grad, 1).bestV, down = peak(grad, -1).bestV;
-      vote += up > down ? 1 : up < down ? -1 : 0;
+      const maxAbs = Math.max(peak(grad, 1).bestV, peak(grad, -1).bestV);
+      for (let k = 1; k < grad.length - 1; k++) {
+        const a = Math.abs(grad[k]!);
+        if (a >= OUTER_EDGE_RATIO * maxAbs && a >= Math.abs(grad[k - 1]!) && a >= Math.abs(grad[k + 1]!)) {
+          vote += Math.sign(grad[k]!);
+          break;
+        }
+      }
     }
     const sign = vote >= 0 ? 1 : -1;
     const pts: Pt[] = [];
     const strengths: number[] = [];
     for (const { c, grad } of profiles) {
-      const { best, bestV } = peak(grad, sign);
+      const strongest = peak(grad, sign);
+      // Of edges nearly as strong as the strongest, take the outermost: a frame's
+      // or plate's true boundary is its outside edge, not a line just inside it.
+      // The normal points inwards, so "outermost" is the smallest index.
+      let best = strongest.best, bestV = strongest.bestV;
+      for (let k = 1; k < strongest.best; k++) {
+        const v = grad[k]! * sign;
+        if (v >= OUTER_EDGE_RATIO * strongest.bestV && v >= grad[k - 1]! * sign && v >= grad[k + 1]! * sign) {
+          best = k;
+          bestV = v;
+          break;
+        }
+      }
       if (best < 1) continue;
       const gm = grad[best - 1]! * sign, gp = grad[best + 1]! * sign;
       const den = gm - 2 * bestV + gp;

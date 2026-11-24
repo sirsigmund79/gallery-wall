@@ -5,7 +5,7 @@
 // Must stay the first import: it hooks the console before OpenCV loads.
 import './worker-console.ts';
 import cvModule from '@techstark/opencv-js';
-import { detectQuads, perspectiveTransform, rectifyQuad, suggestFloorLine, warpImage } from './detect.ts';
+import { detectDoorways, detectQuads, perspectiveTransform, rectifyQuad, suggestFloorLine, warpImage } from './detect.ts';
 import { whenCvReady } from './load.ts';
 import type { Request, Response } from './protocol.ts';
 import type { RGBAImage } from './types.ts';
@@ -41,7 +41,7 @@ self.onmessage = async (e: MessageEvent<Request>) => {
     let result: unknown;
     switch (req.op) {
       case 'detect':
-        result = detectQuads(cv, req.payload.img);
+        result = detectQuads(cv, req.payload.img, undefined, { keepNested: req.payload.keepNested });
         break;
       case 'warp':
         result = warpImage(cv, req.payload.img, req.payload.H, req.payload.width, req.payload.height);
@@ -53,8 +53,19 @@ self.onmessage = async (e: MessageEvent<Request>) => {
         result = perspectiveTransform(cv, req.payload.src, req.payload.dst);
         break;
       case 'floorLine':
-        result = suggestFloorLine(cv, req.payload.img);
+        result = suggestFloorLine(cv, req.payload.img, req.payload.region);
         break;
+      case 'wallFeatures': {
+        const img = req.payload.img;
+        const floorY = suggestFloorLine(cv, img, 'floor');
+        result = {
+          quads: detectQuads(cv, img, undefined, { keepNested: true }),
+          floorY,
+          ceilingY: suggestFloorLine(cv, img, 'ceiling'),
+          doorways: detectDoorways(cv, img, floorY),
+        };
+        break;
+      }
     }
     post({ id: req.id, ok: true, result, ms: Math.round(performance.now() - start) }, transferOf(result));
   } catch (err) {

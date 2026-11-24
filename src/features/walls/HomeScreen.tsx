@@ -106,6 +106,7 @@ export function HomeScreen() {
                           >
                             Move to room…
                           </button>
+                          <a href={`#/walls/${w.id}/objects`}>What’s on this wall</a>
                           <a href={`#/walls/${w.id}/calibrate`}>Re-measure</a>
                           <a href={`#/walls/${w.id}/advanced`}>Edges & measurements</a>
                           <button

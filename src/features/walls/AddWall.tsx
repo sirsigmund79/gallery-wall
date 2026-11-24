@@ -17,14 +17,16 @@ import type { CalibrationRecord, Mm, Wall } from '../../domain/types.ts';
 import { accuracyPct, axisScales, fitCalibration, qualityFromSpread } from '../../geometry/calibration.ts';
 import { DEFAULT_F35_MM } from '../../geometry/gravity.ts';
 import { applyH } from '../../geometry/mat3.ts';
-import { orderQuad, type Quad } from '../../geometry/quad.ts';
+import { bboxIoU, orderQuad, type Quad } from '../../geometry/quad.ts';
 import { formatLength } from '../../geometry/units.ts';
 import { dist, type Pt } from '../../geometry/vec.ts';
 import { EDIT_MAX_PX, importPhoto, resizeToBlob, THUMB_MAX_PX } from '../../media/image.ts';
 import { useSettings } from '../../state/settings.ts';
 import { ErrorDetails } from '../../ui/ErrorDetails.tsx';
 import { LengthInput } from '../../ui/LengthInput.tsx';
-import { PhotoMarkup, type Handle } from '../../ui/PhotoMarkup.tsx';
+import type { Handle } from '../../ui/PhotoMarkup.tsx';
+import { WallTagger } from '../../ui/WallTagger.tsx';
+import { guessKind, tagsToWall, type TagItem } from './tags.ts';
 import { QualityBadge } from '../../ui/QualityBadge.tsx';
 import { ReferencePicker } from '../../ui/ReferencePicker.tsx';
 import { RoomPicker } from '../../ui/RoomPicker.tsx';
@@ -66,6 +68,9 @@ interface Result {
   url: string;
   /** Rough ± (%) from the reference's size in the photo. */
   errPct?: number;
+  /** Area art hangs in (from a tag), in mm. */
+  hang?: { x: Mm; y: Mm; w: Mm; h: Mm };
+  ceilingYmm?: Mm;
   /** Why the reference was used for size only (no straightening). */
   sizeOnlyReason?: 'level' | 'one-side' | 'small' | 'implausible';
 }
@@ -93,9 +98,11 @@ export function AddWall({ wallId }: { wallId?: string }) {
   const [error, setError] = useState<string>();
   const [motion, setMotion] = useState<MotionPermission>('unavailable');
   const [shot, setShot] = useState<Shot | null>(null);
-  const [quads, setQuads] = useState<{ id: string; quad: Quad }[]>([]);
+  const [items, setItems] = useState<TagItem[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
-  const [ref, setRef] = useState<Ref | null>(null);
+  /** Size typed for the item tagged as the reference. */
+  const [refSize, setRefSize] = useState<{ forId: string; widthMm: Mm | null; heightMm: Mm | null; kind: RefKind }>({ forId: '', widthMm: null, heightMm: null, kind: 'other' });
+  const [ceiling, setCeiling] = useState<{ y: number; confirmed: boolean } | null>(null);
   const [lineMode, setLineMode] = useState(false);
   const [line, setLine] = useState<{ p: Pt; q: Pt; lengthMm: Mm | null }>({ p: [0, 0], q: [0, 0], lengthMm: null });
   const [floor, setFloor] = useState<{ y: number; suggested: boolean; confirmed: boolean } | null>(null);
@@ -151,14 +158,22 @@ export function AddWall({ wallId }: { wallId?: string }) {
       const img = await blobToRGBA(input.blob, EDIT_MAX_PX);
       const url = objectUrl(input.blob);
       const el = await loadEl(url);
-      const a = cloneImage(img), b = cloneImage(img);
-      const [found, floorY] = await Promise.all([cvCall('detect', { img: a }, [a.data.buffer]), cvCall('floorLine', { img: b }, [b.data.buffer])]);
-      info(`Wall: found ${found.length} rectangle(s); floor ${floorY === null ? 'not found' : `at y=${Math.round(floorY)}`}`);
+      const a = cloneImage(img);
+      const f = await cvCall('wallFeatures', { img: a }, [a.data.buffer]);
+      info(`Wall: ${f.quads.length} rectangle(s), ${f.doorways.length} doorway(s); floor ${f.floorY === null ? 'not found' : `at y=${Math.round(f.floorY)}`}; ceiling ${f.ceilingY === null ? 'not found' : `at y=${Math.round(f.ceilingY)}`}`);
+      const found: TagItem[] = f.quads.map((quad) => ({ id: newId(), quad, guess: guessKind(img, quad) }));
+      // Doorways: mark a matching rectangle as "Door?", or add the doorway itself.
+      for (const d of f.doorways) {
+        const same = found.find((it) => bboxIoU(it.quad, d.quad) > 0.6);
+        if (same) same.guess = 'door';
+        else found.push({ id: newId(), quad: d.quad, guess: 'door', widthOnly: !d.topVisible });
+      }
       setShot({ ...input, img, url, el });
-      setQuads(found.map((quad) => ({ id: newId(), quad })));
+      setItems(found);
       setSelected(null);
-      setRef(null);
-      setLineMode(found.length === 0);
+      setCeiling(f.ceilingY !== null && f.floorY !== null ? { y: f.ceilingY, confirmed: false } : null);
+      setLineMode(found.length === 0 && f.ceilingY === null);
+      const floorY = f.floorY;
       setLine({ p: [img.width * 0.3, img.height * 0.6], q: [img.width * 0.7, img.height * 0.6], lengthMm: null });
       setFloor(floorY === null ? null : { y: floorY, suggested: true, confirmed: false });
       setStep('size');
@@ -220,7 +235,11 @@ export function AddWall({ wallId }: { wallId?: string }) {
   }
 
   // ── Calibrate (Size it → Done) ──
-  const refQuad = ref ? quads.find((q) => q.id === ref.quadId)?.quad : undefined;
+  const refItem = items.find((it) => it.tag?.as === 'ref');
+  const ref: Ref | null = refItem
+    ? { quadId: refItem.id, ...(refSize.forId === refItem.id ? { widthMm: refSize.widthMm, heightMm: refSize.heightMm, kind: refSize.kind } : { widthMm: null, heightMm: null, kind: 'other' as RefKind }) }
+    : null;
+  const refQuad = refItem?.quad;
   const canContinue = lineMode ? !!line.lengthMm && dist(line.p, line.q) > 10 : !!refQuad && !!(ref!.widthMm || ref!.heightMm);
 
   async function finish() {
@@ -232,13 +251,21 @@ export function AddWall({ wallId }: { wallId?: string }) {
       const guided = shot.capture.kind === 'guided';
       const base = { gravity: shot.capture.gravity };
       const floorPx = floor && (floor.confirmed || floor.suggested) ? floor.y : undefined;
+      const ceilingPx = ceiling?.confirmed ? ceiling.y : undefined;
+      /** Tagged keep-outs and hanging area in mm, plus the door used as the reference. */
+      const withTags = (toMm: (q: Quad) => { x: Mm; y: Mm; w: Mm; h: Mm }, refDoor?: { x: Mm; y: Mm; w: Mm; h: Mm }) => {
+        const t = tagsToWall(items, toMm);
+        return { keepOut: [...t.keepOut, ...(refDoor ? [{ ...refDoor, kind: 'door' as const, label: 'Door' }] : [])], hang: t.hang };
+      };
       let asTaken: Result;
       let warped: Result | undefined;
       if (lineMode || !refQuad || !ref) {
         const m = { p: line.p, q: line.q, lengthMm: line.lengthMm! };
         const fit = fitCalibration([m], { guided })!;
+        const tagged = tagsToWall(items, (q) => quadBoxMm(q, fit.pxPerMm));
         asTaken = {
-          edit: shot.edit, thumb: shot.thumb, width: img.width, height: img.height, url: shot.url, rewarped: false, keepOut: [],
+          edit: shot.edit, thumb: shot.thumb, width: img.width, height: img.height, url: shot.url, rewarped: false, keepOut: tagged.keepOut, hang: tagged.hang,
+          ceilingYmm: ceilingPx !== undefined ? ceilingPx / fit.pxPerMm : undefined,
           calibration: { ...base, method: 'measure', measurements: [m], pxPerMm: fit.pxPerMm, anisotropy: fit.anisotropy, spreadPct: fit.spreadPct, quality: fit.quality },
           floorYmm: floorPx !== undefined ? floorPx / (fit.anisotropy?.sy ?? fit.pxPerMm) : undefined,
         };
@@ -257,7 +284,8 @@ export function AddWall({ wallId }: { wallId?: string }) {
           edit: shot.edit, thumb: shot.thumb, width: img.width, height: img.height, url: shot.url, rewarped: false,
           calibration: { ...base, method: 'measure', measurements, pxPerMm: size.pxPerMm, spreadPct: size.spreadPct, quality },
           floorYmm: floorPx !== undefined ? floorPx / size.pxPerMm : undefined,
-          keepOut: ref.kind === 'door' ? [{ ...quadBoxMm(refQuad, size.pxPerMm), label: 'Door' }] : [],
+          ceilingYmm: ceilingPx !== undefined ? ceilingPx / size.pxPerMm : undefined,
+          ...withTags((q) => quadBoxMm(q, size.pxPerMm), ref.kind === 'door' ? quadBoxMm(refQuad, size.pxPerMm) : undefined),
           errPct,
         };
         // Optionally also a face-on version, only when that's safe (see chooseCalibration).
@@ -294,7 +322,8 @@ export function AddWall({ wallId }: { wallId?: string }) {
               quality: errPct <= 1.5 ? 'good' : 'check',
             },
             floorYmm: floorY2 !== undefined ? floorY2 / k : undefined,
-            keepOut: ref.kind === 'door' ? [{ ...quadBoxMm(q2, k), label: 'Door' }] : [],
+            ceilingYmm: ceilingPx !== undefined ? (applyH(plan.H, [0, ceilingPx])[1] + applyH(plan.H, [img.width, ceilingPx])[1]) / 2 / k : undefined,
+            ...withTags((q) => quadBoxMm(mapQuad(plan.H, q), k), ref.kind === 'door' ? quadBoxMm(q2, k) : undefined),
             errPct,
           };
         }
@@ -317,13 +346,14 @@ export function AddWall({ wallId }: { wallId?: string }) {
     const now = Date.now();
     const { sx, sy } = axisScales(result.calibration);
     const fullBounds = { left: 0, top: 0, right: result.width / sx, bottom: result.height / sy };
-    let bounds = fullBounds;
+    let bounds: Wall['bounds'] = fullBounds;
     if (existing && !result.rewarped) {
       // Same photo, new scale: keep the edges the user set, in pixels.
       const old = axisScales(existing.calibration);
       const b = existing.bounds;
       bounds = { left: (b.left * old.sx) / sx, top: (b.top * old.sy) / sy, right: (b.right * old.sx) / sx, bottom: (b.bottom * old.sy) / sy };
     }
+    if (result.hang) bounds = { left: result.hang.x, top: result.hang.y, right: result.hang.x + result.hang.w, bottom: result.hang.y + result.hang.h };
     const wall: Wall = {
       id: existing?.id ?? newId(),
       name: name.trim() || nextWallName((walls ?? []).map((w) => w.name)),
@@ -333,7 +363,7 @@ export function AddWall({ wallId }: { wallId?: string }) {
       capture: shot.capture.kind,
       calibration: result.calibration,
       bounds,
-      datums: { ...(existing && !result.rewarped ? { ceilingY: existing.datums.ceilingY } : {}), floorY: result.floorYmm },
+      datums: { ceilingY: result.ceilingYmm ?? (existing && !result.rewarped ? existing.datums.ceilingY : undefined), floorY: result.floorYmm },
       keepOut: result.keepOut.length ? result.keepOut : existing?.keepOut,
       foreground: existing?.foreground ?? [],
       layouts: existing?.layouts ?? [newLayout('Layout 1')],
@@ -399,15 +429,13 @@ export function AddWall({ wallId }: { wallId?: string }) {
   }
 
   if (step === 'size') {
-    const sel = quads.find((q) => q.id === selected);
-    const handles: Handle[] = [];
-    if (lineMode) {
-      handles.push({ id: 'line:p', at: line.p, label: 'Line start' }, { id: 'line:q', at: line.q, label: 'Line end' });
-    } else if (sel) {
-      sel.quad.forEach((p, i) => handles.push({ id: `${sel.id}:${i}`, at: p, color: '#0a84ff', label: `Corner ${i + 1}` }));
-    }
-    if (floor) handles.push({ id: 'floor', at: [shot.img.width * 0.15, floor.y], axis: 'y', color: '#30d158', label: 'Floor line' });
+    const W = shot.img.width, H = shot.img.height;
+    const extra: Handle[] = [];
+    if (lineMode) extra.push({ id: 'line:p', at: line.p, label: 'Line start' }, { id: 'line:q', at: line.q, label: 'Line end' });
+    if (floor) extra.push({ id: 'floor', at: [W * 0.12, floor.y], axis: 'y', color: '#30d158', label: 'Floor line' });
+    if (ceiling) extra.push({ id: 'ceiling', at: [W * 0.12, ceiling.y], axis: 'y', color: '#ff9f0a', label: 'Ceiling line' });
     const presets = wallPresets(units);
+    const tagged = items.some((it) => it.tag && it.tag.as !== 'ignore');
 
     return (
       <section className="wizard">
@@ -419,80 +447,90 @@ export function AddWall({ wallId }: { wallId?: string }) {
             </>
           ) : (
             <>
-              <strong>Tap something you know the size of</strong>: a door, a window, a frame.
+              <strong>Tap things on the wall</strong> to say what they are. One needs a known size: a door, a frame, a switch plate.
             </>
           )}
         </p>
-        <PhotoMarkup
+        <WallTagger
           image={shot.el}
-          handles={handles}
-          onMove={(hid, at) => {
-            if (hid === 'floor') return setFloor((f) => f && { ...f, y: at[1], confirmed: true });
-            if (hid === 'line:p') return setLine((l) => ({ ...l, p: at }));
-            if (hid === 'line:q') return setLine((l) => ({ ...l, q: at }));
-            const [qid, k] = hid.split(':');
-            setQuads((qs) => qs.map((q) => (q.id === qid ? { ...q, quad: q.quad.map((p, i) => (i === Number(k) ? at : p)) as Quad } : q)));
+          items={items}
+          onItems={setItems}
+          selectedId={selected}
+          onSelect={setSelected}
+          allowRef={!lineMode}
+          extraHandles={extra}
+          onExtraMove={(hid, at) => {
+            if (hid === 'floor') setFloor((f) => f && { ...f, y: at[1], confirmed: true });
+            else if (hid === 'ceiling') setCeiling((c) => c && { y: at[1], confirmed: true });
+            else if (hid === 'line:p') setLine((l) => ({ ...l, p: at }));
+            else if (hid === 'line:q') setLine((l) => ({ ...l, q: at }));
           }}
-        >
-          {(u) => (
+          overlay={(u) => (
             <>
-              {!lineMode &&
-                quads.map((q) => {
-                  const isRef = q.id === ref?.quadId, isSel = q.id === selected;
-                  return (
-                    <polygon
-                      key={q.id}
-                      points={q.quad.map((p) => p.join(',')).join(' ')}
-                      fill={isSel ? '#0a84ff33' : isRef ? '#ff9f0a33' : '#ffffff22'}
-                      stroke={isSel ? '#0a84ff' : isRef ? '#ff9f0a' : '#ffffff'}
-                      strokeWidth={(isSel || isRef ? 3 : 2) * u}
-                      strokeDasharray={isSel || isRef ? undefined : `${6 * u} ${5 * u}`}
-                      style={{ cursor: 'pointer' }}
-                      onPointerDown={() => setSelected(q.id)}
-                    />
-                  );
-                })}
               {lineMode && <line x1={line.p[0]} y1={line.p[1]} x2={line.q[0]} y2={line.q[1]} stroke="#ff3b30" strokeWidth={3 * u} />}
               {floor && (
                 <>
-                  <line x1={0} x2={shot.img.width} y1={floor.y} y2={floor.y} stroke="#30d158" strokeWidth={3 * u} strokeDasharray={floor.confirmed ? undefined : `${10 * u} ${6 * u}`} />
-                  <text x={shot.img.width * 0.15 + 26 * u} y={floor.y - 8 * u} fontSize={14 * u} className="svg-label">
-                    {floor.confirmed ? 'Floor' : 'Floor?'}
-                  </text>
+                  <line x1={0} x2={W} y1={floor.y} y2={floor.y} stroke="#30d158" strokeWidth={3 * u} strokeDasharray={floor.confirmed ? undefined : `${10 * u} ${6 * u}`} pointerEvents="none" />
+                  <text x={W * 0.12 + 26 * u} y={floor.y - 8 * u} fontSize={14 * u} className="svg-label">{floor.confirmed ? 'Floor' : 'Floor?'}</text>
+                </>
+              )}
+              {ceiling && (
+                <>
+                  <line x1={0} x2={W} y1={ceiling.y} y2={ceiling.y} stroke="#ff9f0a" strokeWidth={3 * u} strokeDasharray={ceiling.confirmed ? undefined : `${10 * u} ${6 * u}`} pointerEvents="none" />
+                  <text x={W * 0.12 + 26 * u} y={ceiling.y + 20 * u} fontSize={14 * u} className="svg-label">{ceiling.confirmed ? 'Ceiling' : 'Ceiling?'}</text>
                 </>
               )}
             </>
           )}
-        </PhotoMarkup>
-
-        <div className="panel">
-          {!lineMode && sel && sel.id !== ref?.quadId && (
-            <div className="actions">
-              <button className="primary" onClick={() => setRef({ quadId: sel.id, widthMm: null, heightMm: null, kind: 'other' })}>
-                I know its size
-              </button>
-              <button className="link" onClick={() => setSelected(null)}>
-                Done
-              </button>
-            </div>
-          )}
-          {!lineMode && ref && refQuad && (
+          refPanel={(it) => (
             <ReferencePicker
               title="Its size"
               units={units}
-              widthMm={ref.widthMm}
-              heightMm={ref.heightMm}
-              onChange={(v) => setRef({ ...ref, ...v, kind: 'other' })}
-              presets={presets}
-              onPreset={(p) => setRef({ ...ref, ...orientPreset(refQuad, p.a, p.b), kind: p.kind })}
+              widthMm={ref?.widthMm ?? null}
+              heightMm={it.widthOnly ? null : (ref?.heightMm ?? null)}
+              onChange={(v) => setRefSize({ forId: it.id, widthMm: ref?.widthMm ?? null, heightMm: ref?.heightMm ?? null, ...v, kind: 'other' })}
+              presets={it.widthOnly ? presets.filter((p) => p.kind === 'door') : presets}
+              onPreset={(p) =>
+                setRefSize(
+                  it.widthOnly
+                    ? { forId: it.id, widthMm: p.a, heightMm: null, kind: p.kind }
+                    : { forId: it.id, ...orientPreset(it.quad, p.a, p.b), kind: p.kind },
+                )
+              }
               hint={
-                ref.widthMm && ref.heightMm
-                  ? 'Both sides: the photo’s angle will be corrected too.'
-                  : 'Tip: enter both sides to also correct the photo’s angle.'
+                it.widthOnly
+                  ? 'The top of this doorway is out of the photo, so only its width is used.'
+                  : `About ±${Math.max(1, Math.round(refErrorPct(it.quad)))}% from something this size in the photo.${refErrorPct(it.quad) > 2 ? ' A door, or floor to ceiling, would be more accurate.' : ''}`
               }
             />
           )}
-          {!lineMode && !quads.length && <p className="hint">No rectangles found. Draw a box around something you know, or measure a line.</p>}
+        />
+
+        <div className="panel">
+          {!selected && !lineMode && !items.length && <p className="hint">Nothing outlined automatically. Draw a box around something you know, or measure a line.</p>}
+          {!selected && !lineMode && items.length > 0 && !refItem && (
+            <p className="hint">Tip: tap something you know the size of and choose “I know its size”. Mark a TV or windows to keep art off them, or a panel to hang art inside.</p>
+          )}
+
+          {ceiling && floor && !lineMode && (
+            <div className="floor-row">
+              <span>Know the floor-to-ceiling height?</span>
+              {[96, 108, 120].map((inches) => (
+                <button
+                  key={inches}
+                  className="chip-btn"
+                  onClick={() => {
+                    setCeiling({ ...ceiling, confirmed: true });
+                    setFloor({ ...floor, confirmed: true });
+                    setLine({ p: [W * 0.5, ceiling.y], q: [W * 0.5, floor.y], lengthMm: inches * 25.4 });
+                    setLineMode(true);
+                  }}
+                >
+                  {units === 'in' ? `${inches / 12} ft` : `${Math.round(inches * 2.54) / 100} m`}
+                </button>
+              ))}
+            </div>
+          )}
 
           {lineMode && (
             <>
@@ -508,17 +546,15 @@ export function AddWall({ wallId }: { wallId?: string }) {
           )}
 
           <div className="actions">
-            {!lineMode && (
-              <button
-                onClick={() => {
-                  const q = { id: newId(), quad: orderQuad(defaultQuad(shot.img.width, shot.img.height)) };
-                  setQuads([...quads, q]);
-                  setSelected(q.id);
-                }}
-              >
-                Draw a box
-              </button>
-            )}
+            <button
+              onClick={() => {
+                const it: TagItem = { id: newId(), quad: orderQuad(defaultQuad(W, H)) };
+                setItems([...items, it]);
+                setSelected(it.id);
+              }}
+            >
+              Draw a box
+            </button>
             <button className="link" onClick={() => setLineMode(!lineMode)}>
               {lineMode ? 'Use a rectangle instead' : 'Measure a line instead'}
             </button>
@@ -538,11 +574,20 @@ export function AddWall({ wallId }: { wallId?: string }) {
                 </>
               )
             ) : (
-              <button className="link" onClick={() => setFloor({ y: shot.img.height * 0.9, suggested: false, confirmed: true })}>
+              <button className="link" onClick={() => setFloor({ y: H * 0.9, suggested: false, confirmed: true })}>
                 Mark the floor (optional)
               </button>
             )}
           </div>
+          {ceiling && !ceiling.confirmed && (
+            <div className="floor-row">
+              <span>Is the orange line the ceiling?</span>
+              <button onClick={() => setCeiling({ ...ceiling, confirmed: true })}>Yes</button>
+              <button className="link" onClick={() => setCeiling(null)}>
+                No
+              </button>
+            </div>
+          )}
 
           {error && <ErrorDetails message={error} />}
           <div className="actions">
@@ -551,6 +596,7 @@ export function AddWall({ wallId }: { wallId?: string }) {
             </button>
             <button onClick={() => void cancel()}>Cancel</button>
           </div>
+          {tagged && <p className="hint">Tagged things are saved with the wall. Change them any time from “What’s on this wall”.</p>}
         </div>
       </section>
     );
