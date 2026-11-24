@@ -93,6 +93,14 @@ export interface Wall {
   calibration: CalibrationRecord;
   bounds: { left: Mm; top: Mm; right: Mm; bottom: Mm };
   datums: { floorY?: Mm; ceilingY?: Mm };
+  /**
+   * Where scanned art hangs right now (from "Plan this wall"). Shown as a dashed
+   * "current spot" when the piece is moved in a layout; `color` is the wall
+   * colour sampled around it, for the optional cover patch.
+   */
+  currentSpots?: { pieceId: string; x: Mm; y: Mm; w: Mm; h: Mm; color: string }[];
+  /** Cover current spots with a flat patch of the surrounding wall colour. */
+  coverSpots?: boolean;
   /** Areas suggestions must not cover (doors, windows…), in wall mm. */
   keepOut?: { x: Mm; y: Mm; w: Mm; h: Mm; label: string }[];
   foreground: ForegroundObject[];

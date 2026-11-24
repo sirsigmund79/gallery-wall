@@ -8,7 +8,12 @@ import { straighten } from '../../capture/straighten.ts';
 import { blobToRGBA, canvasToBlob, cloneImage, cvCall, releaseCv, rgbaToBlob } from '../../cv/client.ts';
 import type { RGBAImage } from '../../cv/types.ts';
 import { newId } from '../../db/ids.ts';
-import { listPieces, putBlob, savePiece } from '../../db/repo.ts';
+import { listPieces, listWalls, putBlob, savePiece } from '../../db/repo.ts';
+import { DEFAULT_ROOM } from '../../db/schema.ts';
+import { useLiveQuery } from 'dexie-react-hooks';
+import { RoomPicker } from '../../ui/RoomPicker.tsx';
+import { nextWallName } from '../walls/wallMath.ts';
+import { planWallFromScan, type ScannedOnWall } from './planWall.ts';
 import { nextPieceNames } from '../art/naming.ts';
 import type { ArtPiece, Confidence, Mm } from '../../domain/types.ts';
 import { defaultHangParams, makeHangSpec } from '../../geometry/layout/hang.ts';
@@ -25,7 +30,7 @@ import { PhotoMarkup, type Handle } from '../../ui/PhotoMarkup.tsx';
 import { TopBar } from '../../ui/TopBar.tsx';
 import { calibrationNote, cropSize, defaultQuad, measureAll, orientPreset, planCalibration, type PhotoView, type Reference } from './scanMath.ts';
 
-type Step = 'start' | 'camera' | 'working' | 'review' | 'results';
+type Step = 'start' | 'camera' | 'working' | 'review' | 'results' | 'saved';
 
 /**
  * Long edge of the working photo for scans. Detection runs at 1200 px and crops
@@ -107,6 +112,14 @@ export function ScanArt() {
   const [persp, setPersp] = useState<{ key: string; H: number[] } | null>(null);
   const [results, setResults] = useState<Result[]>([]);
   const [saving, setSaving] = useState(false);
+  const [savedOnWall, setSavedOnWall] = useState<ScannedOnWall[]>([]);
+  const [wallName, setWallName] = useState('');
+  const [wallRoom, setWallRoom] = useState<string | null>(null);
+  const walls = useLiveQuery(listWalls);
+  const rooms = useMemo(() => {
+    const rs = [...new Set((walls ?? []).map((w) => w.room ?? DEFAULT_ROOM))];
+    return rs.length ? rs : [DEFAULT_ROOM];
+  }, [walls]);
   const fileRef = useRef<HTMLInputElement>(null);
 
   // Free the worker and object URLs when leaving.
@@ -269,6 +282,7 @@ export function ScanArt() {
 
   async function saveAll() {
     setSaving(true);
+    const saved: ScannedOnWall[] = [];
     try {
       const now = Date.now();
       for (const r of results) {
@@ -294,10 +308,39 @@ export function ScanArt() {
           updatedAt: now,
         };
         await savePiece(piece);
+        const q = quads.find((x) => x.id === r.id);
+        if (q) saved.push({ pieceId: piece.id, quad: q.quad, widthMm: r.widthMm, heightMm: r.heightMm });
       }
-      navigate('art');
+      // Art photographed hanging on a wall: offer to plan that wall (one tap).
+      // Only for level-camera shots facing a wall, so it never appears for art on the floor.
+      if (photo?.view === 'wall-level' && saved.length && plane) {
+        setSavedOnWall(saved);
+        setWallName(nextWallName(((await listWalls()) ?? []).map((w) => w.name)));
+        setStep('saved');
+      } else navigate('art');
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function planThisWall() {
+    if (!photo || !plane || !savedOnWall.length) return;
+    setStep('working');
+    setStatus('Setting up your wall…');
+    try {
+      const { wallId, layoutId } = await planWallFromScan({
+        img: photo.img,
+        plane,
+        pieces: savedOnWall,
+        name: wallName.trim() || 'Wall',
+        room: (wallRoom ?? rooms[0] ?? DEFAULT_ROOM).trim() || DEFAULT_ROOM,
+        capture: 'guided',
+      });
+      navigate(`walls/${wallId}/edit/${layoutId}`);
+    } catch (e) {
+      logError('Plan this wall failed:', e);
+      setError((e as Error).message);
+      setStep('saved');
     }
   }
 
@@ -487,6 +530,39 @@ export function ScanArt() {
               {artCount > 0 ? `Measure ${artCount} piece${artCount === 1 ? '' : 's'}` : 'Measure'}
             </button>
             <button onClick={() => setStep('start')}>Retake</button>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  if (step === 'saved') {
+    return (
+      <section>
+        <TopBar title="Added to your art" backHref="#/art" />
+        <p>
+          {savedOnWall.length} piece{savedOnWall.length === 1 ? '' : 's'} added to your library.
+        </p>
+        <div className="card plan-card">
+          <h2>Plan new art for this wall?</h2>
+          <p className="hint">
+            The photo becomes a wall with these pieces exactly where they hang now. Nothing in the photo is erased: if you move a piece, its current
+            spot is outlined, so you know which nail holes to fill.
+          </p>
+          <img className="done-photo" src={photo!.url} alt="The wall you photographed" />
+          <div className="field">
+            <label htmlFor="plan-wall-name">Wall name</label>
+            <input id="plan-wall-name" value={wallName} onChange={(e) => setWallName(e.target.value)} />
+          </div>
+          <RoomPicker rooms={rooms} value={wallRoom ?? rooms[0] ?? DEFAULT_ROOM} onChange={setWallRoom} />
+          {error && <ErrorDetails message={error} />}
+          <div className="actions">
+            <button className="primary" onClick={() => void planThisWall()}>
+              Plan this wall
+            </button>
+            <a className="button" href="#/art">
+              No thanks
+            </a>
           </div>
         </div>
       </section>

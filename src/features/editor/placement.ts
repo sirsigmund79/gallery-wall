@@ -1,5 +1,5 @@
 // Placement helpers shared by the editor UI. Pure.
-import type { ArtPiece, Mm, Wall } from '../../domain/types.ts';
+import type { ArtPiece, Mm, Placement, Wall } from '../../domain/types.ts';
 import { overlaps, type Rect } from '../../geometry/layout/rect.ts';
 import { inToMm } from '../../geometry/units.ts';
 
@@ -59,4 +59,12 @@ export function freeSpot(wall: Pick<Wall, 'bounds' | 'datums'>, piece: Size, pla
 export function fitsWall(wall: Pick<Wall, 'bounds'>, piece: Size): boolean {
   const b = wall.bounds;
   return piece.widthMm <= b.right - b.left && piece.heightMm <= b.bottom - b.top;
+}
+
+/** Current spots whose piece is not at that spot in this layout (moved or removed). */
+export function movedSpots(wall: Pick<Wall, 'currentSpots'>, placements: Placement[], tol: Mm = 5) {
+  return (wall.currentSpots ?? []).filter((sp) => {
+    const pl = placements.find((p) => p.pieceId === sp.pieceId);
+    return !pl || Math.abs(pl.x - sp.x) > tol || Math.abs(pl.y - sp.y) > tol;
+  });
 }

@@ -34,6 +34,8 @@ export function GuidedCamera({ mode: requested, motion, onCapture, onCancel, onU
   const video = useRef<HTMLVideoElement>(null);
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
+  /** The shutter only works once the video is delivering frames. */
+  const [live, setLive] = useState(false);
   const { reading, status, latest } = useGravity(motion === 'granted');
 
   // Auto mode: follow the phone's attitude, with hysteresis (see autoMode).
@@ -128,7 +130,7 @@ export function GuidedCamera({ mode: requested, motion, onCapture, onCancel, onU
 
   return (
     <div className="camera" role="dialog" aria-label="Camera">
-      <video ref={video} playsInline muted autoPlay />
+      <video ref={video} playsInline muted autoPlay onPlaying={() => setLive(true)} onLoadedData={() => setLive(true)} />
       {!error && (
         <div className={`level level-${mode}${ok ? ' ok' : ''}`} aria-hidden="true">
           {mode === 'floor' ? (
@@ -167,7 +169,8 @@ export function GuidedCamera({ mode: requested, motion, onCapture, onCancel, onU
               {readout}
               {sensors && reading && mode === 'floor' && !ok && <> (within {FLOOR_MAX_TILT_DEG}°)</>}
             </p>
-            <button className={`shutter${ok ? ' ok' : ''}`} onClick={() => void capture()} disabled={busy} aria-label={ok ? 'Take photo' : 'Take photo (not level)'} />
+            {!live && <p className="camera-readout">Starting camera…</p>}
+            <button className={`shutter${ok ? ' ok' : ''}`} onClick={() => void capture()} disabled={busy || !live} aria-label={ok ? 'Take photo' : 'Take photo (not level)'} />
           </>
         )}
       </div>

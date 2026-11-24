@@ -21,6 +21,8 @@ interface EditorState {
   undo: () => void;
   redo: () => void;
   switchLayout: (layoutId: string) => void;
+  /** Change wall settings (not undoable), e.g. covering current spots. */
+  patchWall: (patch: Partial<Wall>) => void;
   /** Replace the wall's layouts list (create/rename/delete); not undoable. */
   setLayouts: (layouts: Layout[], activeId: string) => void;
 }
@@ -104,6 +106,13 @@ export const useEditor = create<EditorState>((set, get) => ({
     const layout = wall?.layouts.find((l) => l.id === id);
     if (!wall || !layout) return;
     set({ layoutId: id, history: initHistory(layout.placements), selectedId: null });
+  },
+  patchWall: (patch) => {
+    const { wall } = get();
+    if (!wall) return;
+    const w = { ...wall, ...patch };
+    set({ wall: w });
+    scheduleSave(w);
   },
   setLayouts: (layouts, activeId) => {
     const { wall, layoutId } = get();

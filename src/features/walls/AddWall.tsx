@@ -27,6 +27,7 @@ import { LengthInput } from '../../ui/LengthInput.tsx';
 import { PhotoMarkup, type Handle } from '../../ui/PhotoMarkup.tsx';
 import { QualityBadge } from '../../ui/QualityBadge.tsx';
 import { ReferencePicker } from '../../ui/ReferencePicker.tsx';
+import { RoomPicker } from '../../ui/RoomPicker.tsx';
 import { TopBar } from '../../ui/TopBar.tsx';
 import { WorkingPanel } from '../../ui/WorkingPanel.tsx';
 import { defaultQuad, orientPreset, rectOf } from '../scan/scanMath.ts';
@@ -91,7 +92,6 @@ export function AddWall({ wallId }: { wallId?: string }) {
   const [result, setResult] = useState<Result | null>(null);
   const [name, setName] = useState('');
   const [room, setRoom] = useState<string | null>(null);
-  const [newRoom, setNewRoom] = useState<string | null>(null);
   const created = useRef<string[]>([]); // blobs to clean up on cancel
   const urls = useRef<string[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -113,7 +113,7 @@ export function AddWall({ wallId }: { wallId?: string }) {
     const rs = [...new Set((walls ?? []).map((w) => w.room ?? DEFAULT_ROOM))];
     return rs.length ? rs : [DEFAULT_ROOM];
   }, [walls]);
-  const chosenRoom = newRoom ?? room ?? existing?.room ?? walls?.[0]?.room ?? DEFAULT_ROOM;
+  const chosenRoom = room ?? existing?.room ?? walls?.[0]?.room ?? DEFAULT_ROOM;
 
   // ── Re-measuring an existing wall: start from its current photo ──
   useEffect(() => {
@@ -555,32 +555,7 @@ export function AddWall({ wallId }: { wallId?: string }) {
           <label htmlFor="wall-name">Name</label>
           <input id="wall-name" value={name} onChange={(e) => setName(e.target.value)} />
         </div>
-        <div className="field">
-          <span className="label">Room</span>
-          <div className="chips" role="radiogroup" aria-label="Room">
-            {rooms.map((rm) => (
-              <button
-                key={rm}
-                type="button"
-                role="radio"
-                aria-checked={newRoom === null && chosenRoom === rm}
-                className={`chip-btn${newRoom === null && chosenRoom === rm ? ' on' : ''}`}
-                onClick={() => {
-                  setRoom(rm);
-                  setNewRoom(null);
-                }}
-              >
-                {rm}
-              </button>
-            ))}
-            <button type="button" className={`chip-btn${newRoom !== null ? ' on' : ''}`} onClick={() => setNewRoom('')}>
-              + New room
-            </button>
-          </div>
-          {newRoom !== null && (
-            <input aria-label="New room name" placeholder="e.g. Living room" value={newRoom} onChange={(e) => setNewRoom(e.target.value)} autoFocus />
-          )}
-        </div>
+        <RoomPicker rooms={rooms} value={chosenRoom} onChange={setRoom} />
         <div className="actions">
           <button type="submit" className="primary">
             {existing ? 'Save' : 'Start arranging'}

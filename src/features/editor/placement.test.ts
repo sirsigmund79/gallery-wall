@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
-import { EYE_LEVEL_MM, fitsWall, freeSpot, initialPosition } from './placement.ts';
+import { EYE_LEVEL_MM, fitsWall, freeSpot, initialPosition, movedSpots } from './placement.ts';
 import { overlaps } from '../../geometry/layout/rect.ts';
 
 const wall = { bounds: { left: 0, top: 0, right: 3000, bottom: 2400 }, datums: {} as { floorY?: number } };
@@ -40,5 +40,14 @@ describe('placement helpers', () => {
   it('fitsWall', () => {
     expect(fitsWall(wall, { widthMm: 3000, heightMm: 10 })).toBe(true);
     expect(fitsWall(wall, { widthMm: 3001, heightMm: 10 })).toBe(false);
+  });
+});
+
+describe('movedSpots', () => {
+  const wall = { currentSpots: [{ pieceId: 'a', x: 100, y: 200, w: 300, h: 400, color: '#ccc' }, { pieceId: 'b', x: 600, y: 200, w: 300, h: 400, color: '#ccc' }] };
+  it('lists spots whose piece moved or left the layout, not those still in place', () => {
+    const r = movedSpots(wall, [{ pieceId: 'a', x: 102, y: 199 }]);
+    expect(r.map((s) => s.pieceId)).toEqual(['b']);
+    expect(movedSpots(wall, [{ pieceId: 'a', x: 150, y: 200 }, { pieceId: 'b', x: 600, y: 200 }]).map((s) => s.pieceId)).toEqual(['a']);
   });
 });

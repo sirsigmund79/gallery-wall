@@ -268,6 +268,12 @@ export function WallEditor({ wallId, layoutId }: { wallId: string; layoutId?: st
                 <input type="checkbox" checked={ed.snapping} onChange={(e) => ed.setSnapping(e.target.checked)} />
                 Snap to edges and equal gaps
               </label>
+              {!!wall.currentSpots?.length && (
+                <label className="check-row">
+                  <input type="checkbox" checked={!!wall.coverSpots} onChange={(e) => ed.patchWall({ coverSpots: e.target.checked })} />
+                  Cover where art hangs now
+                </label>
+              )}
               <span className="muted">
                 <QualityBadge quality={wall.calibration.quality} pct={accuracyPct(wall.calibration)} />{' '}
                 <a href={`#/walls/${wall.id}/calibrate`}>Calibration</a>

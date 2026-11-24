@@ -276,3 +276,27 @@ Deviations from the spec (`docs/SPEC.md`), and choices the spec left open. Newes
 - **Editor header:** "Room · Wall" title, ‹ › to the neighbouring walls in the same room (also a
   horizontal swipe on the header), and layouts as chips (+ New, ⋯ for duplicate/rename/delete)
   instead of a dropdown.
+
+## "Plan this wall" after scanning art on a wall
+
+- **Offered only when it saves work and can't confuse:** after "Add N pieces", and only if the scan
+  photo was taken with the level camera **facing a wall** (`view === 'wall-level'`). Ordinary
+  photos never show it, because the app can't tell a wall photo from a floor photo. One card: **Plan
+  this wall** (name + room) / **No thanks**.
+- **No second photo or measurement:** the scan's calibration is reused. With both sides of the
+  reference, the photo is re-warped face-on (`planRectify`, as in Add a wall); with one side, scale
+  only (quality Check). The floor line is detected automatically.
+- **Pieces go where they really hang:** each piece is centred on its detected outline's centre,
+  mapped into the face-on image, at the size saved in the library. Two layouts are created: **As it
+  hangs now** (the record) and **New plan** (a copy, opened for planning). The pieces are marked
+  `hung`.
+- **Nothing is erased (spec principle 1).** The pieces' own crops sit exactly over their real spots.
+  When a piece is moved or removed in a layout, its original spot shows a dashed **"current spot"**
+  outline (which nail holes to fill). Optional **"Cover where art hangs now"** (per wall) draws a
+  flat patch of the wall colour, the median of a thin ring just outside each frame
+  (`ringColour`). This is a small deviation from "every pixel is the user's photo": a single flat
+  colour sampled from the photo, never generated imagery, and off by default.
+- **Camera fix found while testing:** the shutter is disabled ("Starting camera…") until video frames
+  arrive. A tap before then used to be silently ignored.
+- **E2E:** Chromium's fake camera is fed a generated Y4M of art on a wall (`tests/e2e/y4m.ts`,
+  written to the OS temp dir). The test checks that nail positions land within 8 mm of the truth.

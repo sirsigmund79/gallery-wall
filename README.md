@@ -18,7 +18,9 @@ Dependency licenses: [`THIRD_PARTY.md`](THIRD_PARTY.md).
 | Hang guide | Basic printable nail table (PDF templates are M7) |
 | M4 Art from photo | Done: multi-piece detection, corner editing, reference sizing, crops, standard-size suggestions. Needs real-photo QA |
 | Guided capture (gyro) | Done for walls and art; needs sign-convention check on real iPhone/Android (Settings → Sensor check) |
-| M5+ | Not started |
+| M6 Auto-arrange | Done: Suggest (mix from library / rearrange), row/grid/salon/symmetric, shuffle, keep-outs |
+| Rooms & Home | Done: rooms, swipeable wall cards, step-in transition, prev/next wall |
+| M5, M7+ | Not started (cutouts, PDF templates, ghost overlay, stitching) |
 
 ### What you can do today
 
@@ -26,9 +28,11 @@ Dependency licenses: [`THIRD_PARTY.md`](THIRD_PARTY.md).
    guide switches by itself to match how you hold the phone), tap one you
    know the size of (or a sheet of paper or a card in the photo) and enter it. Every piece is
    measured, cropped and straightened. Or **Add by hand** with a typed size.
-2. **Walls → Add a wall:** use the level camera (straightens the photo), or choose a photo, drag the red line over something you know the
-   length of (door width, wall width, a sheet of paper), type it. Optionally mark the floor.
-3. **Add art** onto the wall, drag pieces around (they snap to edges, centres and equal gaps), or
+2. **Home → Add a wall:** photograph it, tap a door (or anything you know the size of) and pick its
+   size; the floor is found for you ("Measure a line instead" works too). Or, after scanning art
+   hanging on a wall, tap **Plan this wall**. Walls are grouped into rooms on Home.
+3. **Suggest** proposes layouts that fit (from your whole library, or rearranging what's up), or
+   **Add art** yourself and drag pieces around (they snap to edges, centres and equal gaps), or
    type exact positions.
 4. **Hang guide:** where each nail goes, measured from the wall's left edge and the floor.
 

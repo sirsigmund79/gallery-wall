@@ -301,3 +301,5 @@ button.link.small { font-size: 0.8rem; min-height: 36px; }
 @media (prefers-reduced-motion: reduce) {
   ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation: none !important; }
 }
+.plan-card { display: flex; flex-direction: column; gap: 10px; }
+.plan-card h2 { margin: 0; }

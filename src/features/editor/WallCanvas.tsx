@@ -6,7 +6,7 @@ import type { ArtPiece, LengthUnit, Mm, Placement, Wall } from '../../domain/typ
 import { axisScales } from '../../geometry/calibration.ts';
 import { snapRect, type GapMark, type Guide } from '../../geometry/layout/snap.ts';
 import { formatLength } from '../../geometry/units.ts';
-import { EYE_LEVEL_MM } from './placement.ts';
+import { EYE_LEVEL_MM, movedSpots } from './placement.ts';
 import { WALL_VT_NAME } from '../../app/transition.ts';
 import { useBlobImage } from '../../media/useBlobUrl.ts';
 
@@ -194,6 +194,17 @@ export function WallCanvas({ wall, placements, pieces, selectedId, snapping, uni
               <KImage name="bg" image={photo} width={photoW} height={photoH} />
             ) : (
               <Rect name="bg" width={photoW} height={photoH} fill="#ccc" />
+            )}
+            {/* Where scanned art hangs now, if it's been moved in this layout */}
+            {movedSpots(wall, placements).map((sp) =>
+              wall.coverSpots ? (
+                <Rect key={`spot${sp.pieceId}`} listening={false} x={sp.x - 4} y={sp.y - 4} width={sp.w + 8} height={sp.h + 8} fill={sp.color} />
+              ) : (
+                <Group key={`spot${sp.pieceId}`} listening={false}>
+                  <Rect x={sp.x} y={sp.y} width={sp.w} height={sp.h} stroke="#ffffff" strokeWidth={2} dash={[8, 6]} strokeScaleEnabled={false} shadowColor="#000" shadowBlur={2} />
+                  <Text x={sp.x + 4 * px} y={sp.y + 4 * px} text="current spot" fontSize={11 * px} fill="#fff" stroke="#000" strokeWidth={2 * px} fillAfterStrokeEnabled />
+                </Group>
+              ),
             )}
             {/* Dim outside the usable wall area */}
             <Rect listening={false} x={0} y={0} width={photoW} height={b.top} fill="#000" opacity={0.35} />
