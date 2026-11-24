@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { applyH, invert, type Mat3 } from '../../geometry/mat3.ts';
+import type { Quad } from '../../geometry/quad.ts';
 import { inToMm } from '../../geometry/units.ts';
 import { nextWallName, planRectify, quadBoxMm, wallPresets } from './wallMath.ts';
 
@@ -40,5 +41,36 @@ describe('helpers', () => {
   it('nextWallName', () => {
     expect(nextWallName([])).toBe('Wall 1');
     expect(nextWallName(['Living room', 'Wall 4'])).toBe('Wall 5');
+  });
+});
+
+describe('chooseCalibration', async () => {
+  const { chooseCalibration, refErrorPct, sizeOnlyScale, warpIsPlausible } = await import('./wallMath.ts');
+  const tiny: Quad = [[1000, 900], [1040, 901], [1041, 965], [1000, 964]];
+  const door: Quad = [[300, 500], [760, 505], [758, 1500], [302, 1498]];
+  it('never warps a level-camera photo, whatever the reference', () => {
+    expect(chooseCalibration({ guided: true, bothSides: true, refQuad: door, w: 2000, h: 1600, Hmm: [0.5, 0, 0, 0, 0.5, 0, 0, 0, 1] })).toEqual({ kind: 'size', reason: 'level' });
+  });
+  it('ordinary photo: small reference → size only', () => {
+    expect(chooseCalibration({ guided: false, bothSides: true, refQuad: tiny, w: 2000, h: 1600, Hmm: [0.5, 0, 0, 0, 0.5, 0, 0, 0, 1] }).kind).toBe('size');
+  });
+  it('ordinary photo: large reference and a plausible warp → warp', () => {
+    expect(chooseCalibration({ guided: false, bothSides: true, refQuad: door, w: 2000, h: 1600, Hmm: [0.5, 0.01, 0, 0, 0.5, 0, 0.00002, 0, 1] })).toEqual({ kind: 'warp' });
+  });
+  it('rejects a warp that stretches one side of the photo far more than the other', () => {
+    const extreme = [1, 0, 0, 0, 1, 0, 0.0008, 0, 1]; // strong perspective across 2000 px
+    expect(warpIsPlausible(extreme, 2000, 1600)).toBe(false);
+    expect(chooseCalibration({ guided: false, bothSides: true, refQuad: door, w: 2000, h: 1600, Hmm: extreme })).toEqual({ kind: 'size', reason: 'implausible' });
+  });
+  it('accuracy hint: a 40 px switch plate is a few %, a door well under 1%', () => {
+    expect(refErrorPct(tiny)).toBeGreaterThan(3);
+    expect(refErrorPct(door)).toBeLessThan(0.5);
+  });
+  it('size-only scale averages both sides and reports their disagreement', () => {
+    const q: Quad = [[0, 0], [200, 0], [200, 103], [0, 103]];
+    const s = sizeOnlyScale(q, 100, 50)!;
+    expect(s.pxPerMm).toBeCloseTo(2.03, 6);
+    expect(s.spreadPct).toBeCloseTo(2.96, 1);
+    expect(sizeOnlyScale(q, 100, null)!.pxPerMm).toBe(2);
   });
 });

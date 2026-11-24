@@ -11,7 +11,7 @@ import { applyH } from '../../geometry/mat3.ts';
 import type { PlaneMap, Quad } from '../../geometry/quad.ts';
 import { ringColour } from '../../media/colour.ts';
 import { resizeToBlob, THUMB_MAX_PX } from '../../media/image.ts';
-import { planRectify } from '../walls/wallMath.ts';
+import { planRectify, warpIsPlausible } from '../walls/wallMath.ts';
 
 export interface ScannedOnWall {
   pieceId: string;
@@ -39,16 +39,22 @@ export async function planWallFromScan(input: PlanWallInput): Promise<{ wallId: 
   let k: number;
   let toRect: (p: [number, number]) => [number, number];
   let homography: number[] | undefined;
-  if (plane.kind === 'homography') {
-    const plan = planRectify(plane.H, img.width, img.height);
-    if (!plan) throw new Error('Could not straighten this photo. Try re-taking it facing the wall.');
+  const H = plane.kind === 'homography' ? plane.H : null;
+  const affine = H !== null && Math.abs(H[6]!) < 1e-12 && Math.abs(H[7]!) < 1e-12;
+  if (H && affine) {
+    // Level-camera photo with a scale-only fit: keep the photo exactly as taken.
+    k = 1 / Math.sqrt(Math.abs(H[0]! * H[4]! - H[1]! * H[3]!));
+    toRect = (p) => p;
+  } else if (H) {
+    const plan = planRectify(H, img.width, img.height);
+    if (!plan || !warpIsPlausible(H, img.width, img.height)) throw new Error('Could not straighten this photo. Try the level camera, facing the wall.');
     const copy = cloneImage(img);
     rect = await cvCall('warp', { img: copy, H: plan.H, width: plan.width, height: plan.height }, [copy.data.buffer]);
     k = plan.pxPerMm;
     toRect = (p) => applyH(plan.H, p);
     homography = plan.H;
   } else {
-    k = plane.pxPerMm;
+    k = (plane as { pxPerMm: number }).pxPerMm;
     toRect = (p) => p;
   }
 
@@ -78,7 +84,7 @@ export async function planWallFromScan(input: PlanWallInput): Promise<{ wallId: 
     pxPerMm: k,
     homography,
     spreadPct: 0,
-    quality: homography ? 'good' : 'check',
+    quality: homography || affine ? 'good' : 'check',
   };
   const now = Date.now();
   const placements = spots.map((s) => ({ pieceId: s.pieceId, x: s.x, y: s.y }));

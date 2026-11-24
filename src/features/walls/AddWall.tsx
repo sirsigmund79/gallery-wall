@@ -14,7 +14,7 @@ import { error as logError, info } from '../../diag/log.ts';
 import { newId } from '../../db/ids.ts';
 import { deleteBlobs, getBlob, getWall, listWalls, newLayout, putBlob, saveWall } from '../../db/repo.ts';
 import type { CalibrationRecord, Mm, Wall } from '../../domain/types.ts';
-import { accuracyPct, axisScales, fitCalibration } from '../../geometry/calibration.ts';
+import { accuracyPct, axisScales, fitCalibration, qualityFromSpread } from '../../geometry/calibration.ts';
 import { DEFAULT_F35_MM } from '../../geometry/gravity.ts';
 import { applyH } from '../../geometry/mat3.ts';
 import { orderQuad, type Quad } from '../../geometry/quad.ts';
@@ -32,7 +32,7 @@ import { TopBar } from '../../ui/TopBar.tsx';
 import { WorkingPanel } from '../../ui/WorkingPanel.tsx';
 import { defaultQuad, orientPreset, rectOf } from '../scan/scanMath.ts';
 import { LENGTH_PRESETS } from './presets.ts';
-import { DEFAULT_ROOM, mapQuad, nextWallName, planRectify, quadBoxMm, wallPresets, type RefKind } from './wallMath.ts';
+import { chooseCalibration, DEFAULT_ROOM, mapQuad, nextWallName, planRectify, quadBoxMm, refErrorPct, sizeOnlyScale, wallPresets, type RefKind } from './wallMath.ts';
 
 type Step = 'photo' | 'camera' | 'working' | 'size' | 'done';
 
@@ -64,7 +64,17 @@ interface Result {
   /** True if the photo was re-warped face-on. */
   rewarped: boolean;
   url: string;
+  /** Rough ± (%) from the reference's size in the photo. */
+  errPct?: number;
+  /** Why the reference was used for size only (no straightening). */
+  sizeOnlyReason?: 'level' | 'one-side' | 'small' | 'implausible';
 }
+
+const SIZE_ONLY_NOTE = {
+  level: 'Taken with the level camera, so the photo is already straight. Your reference set the size.',
+  small: 'Used for size only. Tap something bigger (a door) to also correct the camera angle.',
+  implausible: 'Straightening from that reference would distort the photo, so it is kept as taken.',
+} as const;
 
 const loadEl = (url: string) =>
   new Promise<HTMLImageElement>((res, rej) => {
@@ -89,7 +99,9 @@ export function AddWall({ wallId }: { wallId?: string }) {
   const [lineMode, setLineMode] = useState(false);
   const [line, setLine] = useState<{ p: Pt; q: Pt; lengthMm: Mm | null }>({ p: [0, 0], q: [0, 0], lengthMm: null });
   const [floor, setFloor] = useState<{ y: number; suggested: boolean; confirmed: boolean } | null>(null);
-  const [result, setResult] = useState<Result | null>(null);
+  const [options, setOptions] = useState<{ asTaken: Result; warped?: Result } | null>(null);
+  const [useWarp, setUseWarp] = useState(false);
+  const result = options ? (useWarp && options.warped ? options.warped : options.asTaken) : null;
   const [name, setName] = useState('');
   const [room, setRoom] = useState<string | null>(null);
   const created = useRef<string[]>([]); // blobs to clean up on cancel
@@ -220,63 +232,77 @@ export function AddWall({ wallId }: { wallId?: string }) {
       const guided = shot.capture.kind === 'guided';
       const base = { gravity: shot.capture.gravity };
       const floorPx = floor && (floor.confirmed || floor.suggested) ? floor.y : undefined;
-      let r: Result;
+      let asTaken: Result;
+      let warped: Result | undefined;
       if (lineMode || !refQuad || !ref) {
         const m = { p: line.p, q: line.q, lengthMm: line.lengthMm! };
         const fit = fitCalibration([m], { guided })!;
-        r = {
+        asTaken = {
           edit: shot.edit, thumb: shot.thumb, width: img.width, height: img.height, url: shot.url, rewarped: false, keepOut: [],
           calibration: { ...base, method: 'measure', measurements: [m], pxPerMm: fit.pxPerMm, anisotropy: fit.anisotropy, spreadPct: fit.spreadPct, quality: fit.quality },
           floorYmm: floorPx !== undefined ? floorPx / (fit.anisotropy?.sy ?? fit.pxPerMm) : undefined,
         };
-      } else if (ref.widthMm && ref.heightMm) {
-        // Known rectangle: correct the angle by re-warping the photo face-on.
-        const Hmm = await cvCall('perspective', { src: [...refQuad], dst: rectOf(ref.widthMm, ref.heightMm) });
-        const plan = planRectify(Hmm, img.width, img.height);
-        if (!plan) throw new Error('That rectangle gives an impossible angle. Check its corners and size.');
-        setStatus('Straightening the wall…');
-        const copy = cloneImage(img);
-        const out = await cvCall('warp', { img: copy, H: plan.H, width: plan.width, height: plan.height }, [copy.data.buffer]);
-        const blob = await rgbaToBlob(out, 0.92);
-        const bmp = await createImageBitmap(blob);
-        const thumbBlob = (await resizeToBlob(bmp, THUMB_MAX_PX, 0.8)).blob;
-        bmp.close();
-        const [edit, thumb] = await Promise.all([putBlob(blob), putBlob(thumbBlob)]);
-        created.current.push(edit, thumb);
-        const q2 = mapQuad(plan.H, refQuad);
-        const k = plan.pxPerMm;
-        const floorY2 = floorPx !== undefined ? (applyH(plan.H, [0, floorPx])[1] + applyH(plan.H, [img.width, floorPx])[1]) / 2 : undefined;
-        r = {
-          edit, thumb, width: plan.width, height: plan.height, url: objectUrl(blob), rewarped: true,
-          calibration: {
-            ...base,
-            method: 'rect',
-            measurements: [
-              { p: q2[0], q: q2[1], lengthMm: ref.widthMm },
-              { p: q2[0], q: q2[3], lengthMm: ref.heightMm },
-            ],
-            pxPerMm: k,
-            homography: plan.H,
-            spreadPct: 0,
-            quality: 'good',
-          },
-          floorYmm: floorY2 !== undefined ? floorY2 / k : undefined,
-          keepOut: ref.kind === 'door' ? [{ ...quadBoxMm(q2, k), label: 'Door' }] : [],
-        };
       } else {
-        // One side known: uniform scale from that side.
+        // Reference rectangle. Always available: use it for size only, photo as taken.
+        const size = sizeOnlyScale(refQuad, ref.widthMm, ref.heightMm)!;
+        const errPct = refErrorPct(refQuad);
         const [tl, tr, , bl] = refQuad;
-        const m = ref.widthMm ? { p: tl, q: tr, lengthMm: ref.widthMm } : { p: tl, q: bl, lengthMm: ref.heightMm! };
-        const fit = fitCalibration([m], { guided })!;
-        r = {
+        const measurements = [
+          ...(ref.widthMm ? [{ p: tl, q: tr, lengthMm: ref.widthMm }] : []),
+          ...(ref.heightMm ? [{ p: tl, q: bl, lengthMm: ref.heightMm }] : []),
+        ];
+        const worst = qualityFromSpread(Math.max(size.spreadPct, errPct));
+        const quality = guided ? worst : worst === 'good' ? 'check' : worst;
+        asTaken = {
           edit: shot.edit, thumb: shot.thumb, width: img.width, height: img.height, url: shot.url, rewarped: false,
-          calibration: { ...base, method: 'measure', measurements: [m], pxPerMm: fit.pxPerMm, spreadPct: fit.spreadPct, quality: fit.quality },
-          floorYmm: floorPx !== undefined ? floorPx / fit.pxPerMm : undefined,
-          keepOut: ref.kind === 'door' ? [{ ...quadBoxMm(refQuad, fit.pxPerMm), label: 'Door' }] : [],
+          calibration: { ...base, method: 'measure', measurements, pxPerMm: size.pxPerMm, spreadPct: size.spreadPct, quality },
+          floorYmm: floorPx !== undefined ? floorPx / size.pxPerMm : undefined,
+          keepOut: ref.kind === 'door' ? [{ ...quadBoxMm(refQuad, size.pxPerMm), label: 'Door' }] : [],
+          errPct,
         };
+        // Optionally also a face-on version, only when that's safe (see chooseCalibration).
+        let Hmm: number[] | undefined;
+        if (!guided && ref.widthMm && ref.heightMm) Hmm = await cvCall('perspective', { src: [...refQuad], dst: rectOf(ref.widthMm, ref.heightMm) });
+        const choice = chooseCalibration({ guided, bothSides: !!(ref.widthMm && ref.heightMm), refQuad, w: img.width, h: img.height, Hmm });
+        asTaken.sizeOnlyReason = choice.kind === 'size' ? choice.reason : undefined;
+        const plan = choice.kind === 'warp' && Hmm ? planRectify(Hmm, img.width, img.height) : null;
+        if (plan) {
+          setStatus('Straightening the wall…');
+          const copy = cloneImage(img);
+          const out = await cvCall('warp', { img: copy, H: plan.H, width: plan.width, height: plan.height }, [copy.data.buffer]);
+          const blob = await rgbaToBlob(out, 0.92);
+          const bmp = await createImageBitmap(blob);
+          const thumbBlob = (await resizeToBlob(bmp, THUMB_MAX_PX, 0.8)).blob;
+          bmp.close();
+          const [edit, thumb] = await Promise.all([putBlob(blob), putBlob(thumbBlob)]);
+          created.current.push(edit, thumb);
+          const q2 = mapQuad(plan.H, refQuad);
+          const k = plan.pxPerMm;
+          const floorY2 = floorPx !== undefined ? (applyH(plan.H, [0, floorPx])[1] + applyH(plan.H, [img.width, floorPx])[1]) / 2 : undefined;
+          warped = {
+            edit, thumb, width: plan.width, height: plan.height, url: objectUrl(blob), rewarped: true,
+            calibration: {
+              ...base,
+              method: 'rect',
+              measurements: [
+                { p: q2[0], q: q2[1], lengthMm: ref.widthMm! },
+                { p: q2[0], q: q2[3], lengthMm: ref.heightMm! },
+              ],
+              pxPerMm: k,
+              homography: plan.H,
+              spreadPct: 0,
+              quality: errPct <= 1.5 ? 'good' : 'check',
+            },
+            floorYmm: floorY2 !== undefined ? floorY2 / k : undefined,
+            keepOut: ref.kind === 'door' ? [{ ...quadBoxMm(q2, k), label: 'Door' }] : [],
+            errPct,
+          };
+        }
       }
+      const r = warped ?? asTaken;
       info(`Wall: calibrated (${r.calibration.method}, ${r.calibration.pxPerMm.toFixed(3)} px/mm, ${r.calibration.quality})${r.rewarped ? ', straightened face-on' : ''}`);
-      setResult(r);
+      setOptions({ asTaken, warped });
+      setUseWarp(!!warped);
       if (!name) setName(nextWallName((walls ?? []).map((w) => w.name)));
       setStep('done');
     } catch (e) {
@@ -536,14 +562,28 @@ export function AddWall({ wallId }: { wallId?: string }) {
   return (
     <section>
       <TopBar title={title} backHref={back} />
+      {options?.warped && (
+        <div className="seg seg-wide" role="tablist" aria-label="Photo">
+          <button role="tab" aria-selected={useWarp} onClick={() => setUseWarp(true)}>
+            Straightened
+          </button>
+          <button role="tab" aria-selected={!useWarp} onClick={() => setUseWarp(false)}>
+            As taken
+          </button>
+        </div>
+      )}
       <img className="done-photo" src={r.url} alt="Your wall" />
       <p className="quality">
         <QualityBadge quality={r.calibration.quality} pct={accuracyPct(r.calibration)} />
         <span className="muted">
           Photo covers {formatLength(r.width / sx, units)} × {formatLength(r.height / sy, units)}
-          {r.rewarped ? ', straightened face-on' : ''}
+          {r.rewarped ? ', straightened face-on' : ', as taken'}
         </span>
       </p>
+      {r.sizeOnlyReason && r.sizeOnlyReason !== 'one-side' && <p className="hint">{SIZE_ONLY_NOTE[r.sizeOnlyReason]}</p>}
+      {r.errPct !== undefined && r.errPct > 1.5 && (
+        <p className="hint">Sizes are about ±{Math.round(r.errPct)}% from that small reference. A door, or floor to ceiling, would be more accurate.</p>
+      )}
       <form
         className="form"
         onSubmit={(e) => {

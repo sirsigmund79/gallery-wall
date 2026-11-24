@@ -14,10 +14,10 @@ describe('planCalibration', () => {
     expect(q[0]).toBeCloseTo(297);
     expect(q[1]).toBeCloseTo(210);
   });
-  it('ordinary or wall photo + both sides → perspective (computed by OpenCV)', () => {
+  it('ordinary photo + both sides → perspective (computed by OpenCV)', () => {
     expect(planCalibration(ref, { quadId: 'r', widthMm: 297, heightMm: 210 }, 'unknown')?.kind).toBe('perspective');
-    // A levelled wall photo can still have yaw, so it isn't treated as face-on.
-    expect(planCalibration(ref, { quadId: 'r', widthMm: 297, heightMm: 210 }, 'wall-level')?.kind).toBe('perspective');
+    // A level-camera wall photo is already straight: scale only, no perspective fit.
+    expect(planCalibration(ref, { quadId: 'r', widthMm: 297, heightMm: 210 }, 'wall-level')?.kind).toBe('similarity');
   });
   it('one side → uniform scale from that side', () => {
     expect(planCalibration(ref, { quadId: 'r', widthMm: 148.5, heightMm: null }, 'top-down')).toEqual({ kind: 'scale', pxPerMm: 2 });

@@ -300,3 +300,21 @@ Deviations from the spec (`docs/SPEC.md`), and choices the spec left open. Newes
   arrive. A tap before then used to be silently ignored.
 - **E2E:** Chromium's fake camera is fed a generated Y4M of art on a wall (`tests/e2e/y4m.ts`,
   written to the OS temp dir). The test checks that nail positions land within 8 mm of the truth.
+
+## Safe straightening (after the warped hallway photo)
+
+- **Cause:** a level-camera wall photo (already straight) was re-warped with a full perspective
+  fit from a tiny, slightly-off light-switch outline. About 2 px of corner error on about 40 px
+  becomes a large false angle.
+- **Rule (`chooseCalibration`, `src/features/walls/wallMath.ts`):**
+  - **Level-camera photos are never re-warped from a reference.** The reference only sets the
+    size: a uniform scale averaging both known sides (`sizeOnlyScale`).
+  - **Ordinary photos** are warped only when the reference spans ≥ 25% of the photo's width or
+    height *and* the warp is plausible: local magnification varies ≤ 1.5× across the photo and the
+    overall proportions change ≤ 1.5× (`warpIsPlausible`). Otherwise size only.
+  - Quality accounts for the reference's size: about ±(1.5 px ÷ its shortest side). A switch plate
+    shows "about ±4%; a door, or floor to ceiling, would be more accurate".
+  - When a warp is applied, Done offers **Straightened / As taken** (spec §6.2 before/after), so
+    the original is always one tap away.
+- **Same rule elsewhere:** Scan art's `wall-level` view now uses a similarity fit like `top-down`,
+  and Plan this wall keeps level-camera photos as taken.

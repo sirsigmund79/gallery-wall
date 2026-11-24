@@ -28,14 +28,16 @@ export type PhotoView = 'top-down' | 'wall-level' | 'unknown';
 
 /**
  * Decide how to map pixels to mm from the reference.
- *  - Both sides known + face-on photo: similarity (scale only; no extrapolation).
- *  - Both sides known otherwise: full perspective from the reference.
- *  - One side known: uniform scale (good face-on; rough otherwise).
+ *  - Both sides known + level-camera photo (top-down or facing a wall): similarity
+ *    (scale only). Gravity already straightened the photo; fitting a perspective
+ *    to a small, slightly-off outline would only add a false angle.
+ *  - Both sides known on an ordinary photo: full perspective from the reference.
+ *  - One side known: uniform scale.
  */
 export function planCalibration(refQuad: Quad, ref: Reference, view: PhotoView): CalibrationPlan | null {
   const { widthMm: w, heightMm: h } = ref;
   if (w && h) {
-    return view === 'top-down'
+    return view !== 'unknown'
       ? { kind: 'similarity', H: similarityFit(refQuad, rectOf(w, h)) }
       : { kind: 'perspective', src: [...refQuad], dst: rectOf(w, h) };
   }
@@ -49,8 +51,7 @@ export function planCalibration(refQuad: Quad, ref: Reference, view: PhotoView):
 export function calibrationNote(plan: CalibrationPlan, view: PhotoView): { quality: 'good' | 'check'; text: string } {
   if (view === 'top-down') return { quality: 'good', text: 'Straightened with the level sensor.' };
   if (plan.kind === 'perspective') return { quality: 'good', text: 'Angle corrected from your reference. Accuracy is best near the reference piece.' };
-  if (view === 'wall-level')
-    return { quality: 'check', text: 'Levelled with the sensor. If you weren’t square to the wall, sizes may be a few % off: enter both sides of the reference.' };
+  if (view === 'wall-level') return { quality: 'good', text: 'Straightened with the level sensor. Stand square to the wall for best accuracy.' };
   return { quality: 'check', text: 'One side only on an angled photo: sizes may be a few % off. Enter both sides, or use the level camera.' };
 }
 
