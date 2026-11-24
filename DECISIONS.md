@@ -343,3 +343,27 @@ Deviations from the spec (`docs/SPEC.md`), and choices the spec left open. Newes
   side's light/dark direction from that outermost edge. A switch plate's thin grey outline had
   pulled corners onto its inner edge: about 10% too small on a 40 px plate. It applies to art scans
   too (a frame's true boundary is its outside edge). All detection tests still pass.
+
+## Suggestions that respect what's on the wall
+
+- **Keep-out kinds drive placement** (`zone.ts`):
+  - **Anchors** (TV, furniture): the group is centred on the main anchor (largest, nearest the
+    wall's centre), with its **bottom edge 8 in above** the anchor (`ANCHOR_GAP_MM`). Its width is
+    about **110% of a TV** (visually heavy) or **75% of furniture**, limited by the clear span between
+    other keep-outs.
+  - `Zone.align: 'bottom'`: `centreOn` puts the group's bottom on the line and only nudges it
+    sideways or up; the score's centre term measures distance to the line.
+  - **Avoid** zones (window, door, other) are only kept clear of. Every keep-out is a hard
+    constraint.
+- **Tagged panel** (`Wall.hangArea`): 3 in margins and a target width of 80% of the panel, so
+  panels get filled instead of holding a small cluster.
+- **Fill target corrected:** set selection now aims for art covering **50–70% of the target group
+  box**. The earlier 35–50% was the spec's whole-wall rule applied to the much smaller group box,
+  which gave 2 small pieces where a designer would put more.
+- **Suggest sheet:** a "Tell us what's on this wall" banner appears until something other than the
+  auto-added reference door is tagged. Previews zoom to the target area (padded, including the
+  TV/sofa below for context) instead of the whole photo.
+- Tests: a TV wall with windows (art above the TV, centred, never over it or the windows), a
+  panel fill, a 500-input property test with random TVs/furniture/windows, plus the earlier
+  1,000-input test. e2e: tag the TV ("TV?" one-tap) and a window, apply a suggestion, check the
+  saved layout in IndexedDB.

@@ -36,8 +36,8 @@ interface Props {
   wall: Wall;
   placements: Pick<Placement, 'pieceId' | 'x' | 'y'>[];
   pieces: Map<string, ArtPiece>;
-  /** Crop to the wall area (default) or show the whole photo. */
-  crop?: 'wall' | 'photo';
+  /** Crop to the wall area (default), show the whole photo, or show a given area (mm). */
+  crop?: 'wall' | 'photo' | { x: number; y: number; w: number; h: number };
   className?: string;
   label?: string;
   /** Pieces to outline (e.g. the spot something hangs now). */
@@ -50,7 +50,7 @@ export function WallPreview({ wall, placements, pieces, crop = 'wall', className
   const { sx, sy } = axisScales(wall.calibration);
   const W = wall.photo.widthPx / sx, H = wall.photo.heightPx / sy;
   const b = wall.bounds;
-  const vb = crop === 'wall' ? [b.left, b.top, b.right - b.left, b.bottom - b.top] : [0, 0, W, H];
+  const vb = typeof crop === 'object' ? [crop.x, crop.y, crop.w, crop.h] : crop === 'wall' ? [b.left, b.top, b.right - b.left, b.bottom - b.top] : [0, 0, W, H];
   const stroke = Math.max(vb[2]!, vb[3]!) / 300;
   return (
     <svg className={className} viewBox={vb.join(' ')} preserveAspectRatio="xMidYMid slice" role="img" aria-label={label}>

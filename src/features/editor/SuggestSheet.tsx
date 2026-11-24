@@ -7,6 +7,9 @@ import { inToMm } from '../../geometry/units.ts';
 import { ErrorDetails } from '../../ui/ErrorDetails.tsx';
 import { WallPreview } from '../../ui/WallPreview.tsx';
 import { suggestInWorker } from '../../workers/arrangeClient.ts';
+import { artZone } from '../../geometry/layout/arrange/index.ts';
+import { axisScales } from '../../geometry/calibration.ts';
+import { kindOf } from '../walls/tags.ts';
 
 /** Space between pieces in suggestions (~2 in). */
 export const SUGGEST_GAP_MM = inToMm(2);
@@ -41,12 +44,56 @@ export function SuggestSheet({ wall, placements, pieces, onApply, onSaveAsNew, o
     return pieces.filter((p) => onWall.has(p.id) || p.status !== 'hung').map(toArr);
   }, [mode, placements, pieces, byId, onWall]);
 
+  const spec = useMemo(
+    () => ({
+      bounds: wall.bounds,
+      floorY: wall.datums.floorY,
+      ceilingY: wall.datums.ceilingY,
+      keepOut: (wall.keepOut ?? []).map((k) => ({ x: k.x, y: k.y, w: k.w, h: k.h, kind: kindOf(k) })),
+      hangArea: wall.hangArea,
+    }),
+    [wall],
+  );
+  // Previews zoom to where art can go (plus what it sits above), so the art is big enough to judge.
+  const previewArea = useMemo(() => {
+    const z = artZone(spec);
+    const { sx, sy } = axisScales(wall.calibration);
+    const W = wall.photo.widthPx / sx, H = wall.photo.heightPx / sy;
+    // The target group box, generously padded.
+    const gw = z.targetWidth * 1.7, gh = Math.max(z.targetHeight * 1.7, gw * 0.5);
+    const gcy = z.align === 'bottom' ? z.target.y - z.targetHeight / 2 : z.target.y;
+    let x0 = Math.max(z.usable.x - 100, z.target.x - gw / 2), x1 = Math.min(z.usable.x + z.usable.w + 100, z.target.x + gw / 2);
+    let y0 = Math.max(z.usable.y - 100, gcy - gh / 2), y1 = Math.min(z.usable.y + z.usable.h + 100, gcy + gh / 2);
+    for (const k of spec.keepOut)
+      if ((k.kind === 'tv' || k.kind === 'furniture') && k.x < x1 && k.x + k.w > x0) {
+        // Include the TV/sofa the art sits above, for context.
+        if (Math.abs(k.x + k.w / 2 - z.target.x) < k.w) {
+          x0 = Math.min(x0, k.x);
+          x1 = Math.max(x1, k.x + k.w);
+          y1 = Math.max(y1, k.y + k.h);
+        }
+      }
+    const pad = Math.max(x1 - x0, y1 - y0) * 0.08;
+    x0 = Math.max(0, x0 - pad);
+    y0 = Math.max(0, y0 - pad);
+    x1 = Math.min(W, x1 + pad);
+    y1 = Math.min(H, y1 + pad);
+    // Match the card's 4:3 shape around the centre.
+    let w = x1 - x0, h = y1 - y0;
+    const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+    if (w / h > 4 / 3) h = (w * 3) / 4;
+    else w = (h * 4) / 3;
+    return { x: cx - w / 2, y: cy - h / 2, w, h };
+  }, [spec, wall]);
+  // A door used as the size reference is added automatically; it doesn't count as "told us".
+  const untagged = !wall.hangArea && !(wall.keepOut ?? []).some((k) => kindOf(k) !== 'door');
+
   const key = `${mode}|${style}|${seed}|${pool.map((p) => p.id).join(',')}`;
   useEffect(() => {
     if (!pool.length) return;
     let alive = true;
     suggestInWorker({
-      wall: { bounds: wall.bounds, floorY: wall.datums.floorY, ceilingY: wall.datums.ceilingY, keepOut: wall.keepOut },
+      wall: spec,
       pool,
       mode,
       style,
@@ -58,7 +105,7 @@ export function SuggestSheet({ wall, placements, pieces, onApply, onSaveAsNew, o
     return () => {
       alive = false;
     };
-  }, [key, pool, mode, style, seed, wall]);
+  }, [key, pool, mode, style, seed, spec]);
 
   const variants = result?.key === key ? result.variants : null;
   const toPlacements = (v: Variant): Placement[] => v.placements.map((q) => ({ pieceId: q.id, x: q.x, y: q.y, locked: onWall.get(q.id)?.locked }));
@@ -72,6 +119,12 @@ export function SuggestSheet({ wall, placements, pieces, onApply, onSaveAsNew, o
             Close
           </button>
         </div>
+        {untagged && (
+          <a className="banner" href={`#/walls/${wall.id}/objects`}>
+            <strong>Tell us what’s on this wall</strong>
+            <span>Mark a TV, windows or furniture (art stays clear) or a panel (art goes inside) for better ideas.</span>
+          </a>
+        )}
         <div className="seg seg-wide" role="tablist" aria-label="Which art">
           <button role="tab" aria-selected={mode === 'mix'} onClick={() => setMode('mix')}>
             Mix from my art
@@ -104,12 +157,7 @@ export function SuggestSheet({ wall, placements, pieces, onApply, onSaveAsNew, o
             {variants.map((v, i) => (
               <li key={i}>
                 <button className="suggestion" onClick={() => onApply(toPlacements(v))} aria-label={`Use suggestion ${i + 1}: ${STYLE_LABEL[v.style]}, ${v.placements.length} pieces`}>
-                  <WallPreview
-                    wall={wall}
-                    placements={toPlacements(v)}
-                    pieces={byId}
-                    className="suggestion-img"
-                  />
+                  <WallPreview wall={wall} placements={toPlacements(v)} pieces={byId} className="suggestion-img" crop={previewArea} />
                   <span className="suggestion-meta">
                     {STYLE_LABEL[v.style]} · {v.placements.length} piece{v.placements.length === 1 ? '' : 's'}
                   </span>

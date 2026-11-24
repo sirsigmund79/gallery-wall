@@ -365,6 +365,7 @@ export function AddWall({ wallId }: { wallId?: string }) {
       bounds,
       datums: { ceilingY: result.ceilingYmm ?? (existing && !result.rewarped ? existing.datums.ceilingY : undefined), floorY: result.floorYmm },
       keepOut: result.keepOut.length ? result.keepOut : existing?.keepOut,
+      hangArea: result.hang ? true : existing?.hangArea,
       foreground: existing?.foreground ?? [],
       layouts: existing?.layouts ?? [newLayout('Layout 1')],
       createdAt: existing?.createdAt ?? now,

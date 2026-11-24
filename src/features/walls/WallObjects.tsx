@@ -98,7 +98,8 @@ export function WallObjects({ wallId }: { wallId: string }) {
       : hangFromBounds.current && !hangStillTagged
         ? fullBounds
         : wall.bounds;
-    await saveWall({ ...wall, keepOut: t.keepOut, bounds });
+    const hangArea = t.hang ? true : hangFromBounds.current && !hangStillTagged ? false : wall.hangArea;
+    await saveWall({ ...wall, keepOut: t.keepOut, bounds, hangArea });
     info(`Wall objects: saved ${t.keepOut.length} keep-out(s)${t.hang ? ' and a hanging area' : ''}`);
     navigate(`walls/${wall.id}/edit`, { replace: true });
   }

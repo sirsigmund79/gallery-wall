@@ -13,8 +13,12 @@ export const WALL = {
   floorPx: 1500,
 };
 
-export async function wallPhotoPng(page: Page): Promise<Buffer> {
-  const dataUrl = await page.evaluate((W) => {
+/** Optional extras drawn on the synthetic wall (px). */
+export const TV = { x: 1100, y: 897, w: 450, h: 253 };
+export const WINDOW = { x: 1700, y: 400, w: 250, h: 800 };
+
+export async function wallPhotoPng(page: Page, opts: { tv?: boolean } = {}): Promise<Buffer> {
+  const dataUrl = await page.evaluate(([W, extras]) => {
     const c = document.createElement('canvas');
     c.width = W.widthPx;
     c.height = W.heightPx;
@@ -28,8 +32,19 @@ export async function wallPhotoPng(page: Page): Promise<Buffer> {
     g.strokeStyle = '#555';
     g.lineWidth = 4;
     g.strokeRect(W.door.x1, W.door.top, W.door.x2 - W.door.x1, W.door.bottom - W.door.top);
+    if (extras) {
+      const { tv, win } = extras;
+      g.fillStyle = '#6b4f37'; // console under the TV
+      g.fillRect(tv.x - 60, tv.y + tv.h + 20, tv.w + 120, W.floorPx - (tv.y + tv.h + 20));
+      g.fillStyle = '#111317';
+      g.fillRect(tv.x, tv.y, tv.w, tv.h);
+      g.fillStyle = '#f2f2f0';
+      g.fillRect(win.x - 12, win.y - 12, win.w + 24, win.h + 24);
+      g.fillStyle = '#9fc3dd';
+      g.fillRect(win.x, win.y, win.w, win.h);
+    }
     return c.toDataURL('image/png');
-  }, WALL);
+  }, [WALL, opts.tv ? { tv: TV, win: WINDOW } : null] as const);
   return Buffer.from(dataUrl.split(',')[1]!, 'base64');
 }
 
@@ -119,9 +134,9 @@ export async function addPiece(page: Page, name: string, w: string, h: string) {
 }
 
 /** Add the synthetic wall with the new flow: tap the door, "Door 36 × 80 in", confirm the floor. */
-export async function addWallWithDoor(page: Page, opts: { name?: string; room?: string } = {}) {
+export async function addWallWithDoor(page: Page, opts: { name?: string; room?: string; tv?: boolean } = {}) {
   await page.goto('/#/walls/new');
-  await page.locator('input[type=file]').setInputFiles({ name: 'wall.png', mimeType: 'image/png', buffer: await wallPhotoPng(page) });
+  await page.locator('input[type=file]').setInputFiles({ name: 'wall.png', mimeType: 'image/png', buffer: await wallPhotoPng(page, { tv: opts.tv }) });
   await page.getByText('Tap things on the wall').waitFor({ timeout: 60_000 });
   await clickImagePoint(page, (WALL.door.x1 + WALL.door.x2) / 2, (WALL.door.top + WALL.door.bottom) / 2, WALL.widthPx, WALL.heightPx);
   await page.getByRole('radio', { name: 'I know its size' }).click();

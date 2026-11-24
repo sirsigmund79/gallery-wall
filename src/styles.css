@@ -309,3 +309,5 @@ button.link.small { font-size: 0.8rem; min-height: 36px; }
 .tag-head { display: flex; justify-content: space-between; align-items: center; }
 .chip-btn.small { min-height: 32px; font-size: 0.8rem; }
 .tag-panel fieldset.card { margin: 0; padding: 8px 10px; }
+.banner { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border-radius: 12px; background: color-mix(in srgb, var(--accent) 14%, var(--surface)); border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--border)); color: var(--text); text-decoration: none; font-size: 0.9rem; }
+.banner strong { color: var(--accent); }

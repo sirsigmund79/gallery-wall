@@ -160,11 +160,13 @@ export function centreOn(rel: Rel[], zone: Zone, obstacles: Rect[], gap: Mm): Pl
   const clampX = (x: Mm) => Math.min(U.x + U.w - bb.w, Math.max(U.x, x));
   const clampY = (y: Mm) => Math.min(U.y + U.h - bb.h, Math.max(U.y, y));
   const baseX = clampX(zone.target.x - bb.w / 2);
-  const baseY = clampY(zone.target.y - bb.h / 2);
+  // Bottom-aligned (above a TV/sofa): the group's bottom edge on the line.
+  const baseY = clampY(zone.align === 'bottom' ? zone.target.y - bb.h : zone.target.y - bb.h / 2);
   // Try the centred spot, then step sideways/up/down until clear of locked pieces.
   const step = Math.max(gap, 25);
   const tries: [number, number][] = [[0, 0]];
-  for (let k = 1; k <= 40; k++) tries.push([k * step, 0], [-k * step, 0], [0, -k * step], [0, k * step]);
+  // Above an anchor, only slide sideways or up (never down onto it).
+  for (let k = 1; k <= 40; k++) tries.push([k * step, 0], [-k * step, 0], [0, -k * step], ...(zone.align === 'bottom' ? [] : [[0, k * step] as [number, number]]));
   for (const [dx, dy] of tries) {
     const ox = clampX(baseX + dx) - bb.x, oy = clampY(baseY + dy) - bb.y;
     const out = rel.map((q) => ({ id: q.p.id, x: q.x + ox, y: q.y + oy }));

@@ -16,8 +16,10 @@ export interface WallSpec {
   bounds: { left: Mm; top: Mm; right: Mm; bottom: Mm };
   floorY?: Mm;
   ceilingY?: Mm;
-  /** No art here: doors, windows, a TV (spec §6.6 keepOut). */
-  keepOut?: Rect[];
+  /** No art here: doors, windows, a TV (spec §6.6 keepOut). TV/furniture are anchors art sits above. */
+  keepOut?: (Rect & { kind?: string })[];
+  /** Bounds are a panel/hanging area to fill, not the whole wall. */
+  hangArea?: boolean;
 }
 
 export interface ArrangeInput {
@@ -57,4 +59,9 @@ export interface Zone {
   targetHeight: Mm;
   /** Areas art must not cover. */
   keepOut: Rect[];
+  /**
+   * 'centre': the group's centre goes on `target` (eye level).
+   * 'bottom': the group's bottom edge sits on `target.y` (above a TV or sofa), centred on `target.x`.
+   */
+  align: 'centre' | 'bottom';
 }

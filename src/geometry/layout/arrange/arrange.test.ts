@@ -94,6 +94,62 @@ describe('keep-out zones', () => {
   });
 });
 
+describe('walls with things on them', () => {
+  // Like the owner's living room: TV on a console in the middle, a window either side.
+  const TV = { x: 1050, y: 1300, w: 900, h: 506, kind: 'tv' };
+  const winL = { x: 100, y: 450, w: 600, h: 1450, kind: 'window' };
+  const winR = { x: 2300, y: 450, w: 600, h: 1450, kind: 'window' };
+  const tvWall = { bounds: { left: 0, top: 0, right: 3000, bottom: 2400 }, floorY: 2400, keepOut: [TV, winL, winR] };
+
+  it.each(['mix', 'rearrange'] as const)('%s: art goes above the TV, centred on it, never over it or the windows', (mode) => {
+    // Rearrange: a realistic set (all 8 incl. a 24 × 36 poster can't fit above a TV between windows).
+    const pool = mode === 'rearrange' ? EIGHT.slice(1, 6) : EIGHT;
+    const input: ArrangeInput = { wall: tvWall, pool, mode, style: 'any', gap: GAP, seed: 11 };
+    const vs = suggest(input);
+    expect(vs.length).toBeGreaterThanOrEqual(3);
+    const byId = new Map(EIGHT.map((p) => [p.id, p]));
+    for (const v of vs) {
+      checkValid(v, input);
+      const rects = v.placements.map((q) => ({ x: q.x, y: q.y, w: byId.get(q.id)!.w, h: byId.get(q.id)!.h }));
+      const x0 = Math.min(...rects.map((r) => r.x)), x1 = Math.max(...rects.map((r) => r.x + r.w));
+      const y1 = Math.max(...rects.map((r) => r.y + r.h));
+      for (const r of rects) for (const k of [TV, winL, winR]) expect(overlaps(r, k)).toBe(false);
+      expect(y1).toBeLessThanOrEqual(TV.y - IN(8) + 0.5); // 8 in above the TV
+      expect(Math.abs((x0 + x1) / 2 - (TV.x + TV.w / 2))).toBeLessThan(120); // centred on it
+    }
+  });
+
+  it('fills a tagged panel: inside it, using most of its width', () => {
+    const panel = { bounds: { left: 600, top: 400, right: 1600, bottom: 1900 }, floorY: 2400, hangArea: true };
+    const input: ArrangeInput = { wall: panel, pool: EIGHT, mode: 'mix', style: 'any', gap: GAP, seed: 4 };
+    const vs = suggest(input);
+    expect(vs.length).toBeGreaterThan(0);
+    const byId = new Map(EIGHT.map((p) => [p.id, p]));
+    const widths = vs.map((v) => {
+      checkValid(v, input);
+      const rects = v.placements.map((q) => ({ x: q.x, w: byId.get(q.id)!.w }));
+      return Math.max(...rects.map((r) => r.x + r.w)) - Math.min(...rects.map((r) => r.x));
+    });
+    // The best suggestion spans at least 60% of the panel's usable width.
+    expect(widths[0]!).toBeGreaterThan((1000 - 2 * IN(3)) * 0.6);
+  });
+
+  it('property: random TVs/furniture/windows are never covered (500 inputs)', () => {
+    const box = fc.record({ x: fc.integer({ min: 0, max: 3500 }), y: fc.integer({ min: 300, max: 2200 }), w: fc.integer({ min: 200, max: 1200 }), h: fc.integer({ min: 200, max: 900 }), kind: fc.constantFrom('tv', 'furniture', 'window', 'door', 'other') });
+    fc.assert(
+      fc.property(fc.array(box, { maxLength: 4 }), fc.integer(), fc.constantFrom('mix', 'rearrange'), (keepOut, seed, mode) => {
+        const input: ArrangeInput = { wall: { bounds: { left: 0, top: 0, right: 4000, bottom: 2600 }, floorY: 2600, keepOut }, pool: EIGHT.slice(0, 6), mode: mode as 'mix' | 'rearrange', style: 'any', gap: GAP, seed, count: 3 };
+        const byId = new Map(input.pool.map((p) => [p.id, p]));
+        for (const v of suggest(input)) {
+          checkValid(v, input);
+          for (const q of v.placements) for (const k of keepOut) expect(overlaps({ x: q.x, y: q.y, w: byId.get(q.id)!.w, h: byId.get(q.id)!.h }, k)).toBe(false);
+        }
+      }),
+      { numRuns: 500 },
+    );
+  }, 60_000);
+});
+
 describe('suggest: properties over random walls and pieces', () => {
   it('never overlaps, never leaves the usable area, respects locks (1,000 inputs)', () => {
     const piece = fc.record({ w: fc.integer({ min: 4, max: 40 }), h: fc.integer({ min: 4, max: 40 }) });

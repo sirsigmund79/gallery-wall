@@ -48,7 +48,9 @@ export function scoreLayout(rects: Rect[], zone: Zone): { score: number; terms: 
   const gcy = rects.reduce((s, r) => s + (r.y + r.h / 2) * r.w * r.h, 0) / A;
   const U = zone.usable;
 
-  const centre = clamp01(1 - Math.hypot((gcx - zone.target.x) / (U.w * 0.25 || 1), (gcy - zone.target.y) / (U.h * 0.25 || 1)));
+  // Centred: visual centre on the target. Bottom-aligned: centred over the anchor, sitting on the line.
+  const dy = zone.align === 'bottom' ? y1 - zone.target.y : gcy - zone.target.y;
+  const centre = clamp01(1 - Math.hypot((gcx - zone.target.x) / (U.w * 0.25 || 1), dy / (U.h * 0.25 || 1)));
 
   // Balance: area-weighted lever arms either side of the bounding box's centre line.
   const mid = (x0 + x1) / 2;

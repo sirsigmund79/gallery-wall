@@ -87,6 +87,8 @@ export interface Wall {
   id: string;
   name: string;
   photo: { original: BlobRef; rectified: BlobRef; widthPx: number; heightPx: number };
+  /** True when `bounds` is a tagged hanging area (e.g. a panel moulding) rather than the whole wall. */
+  hangArea?: boolean;
   /** Room the wall belongs to (e.g. "Living room"); walls are grouped by it. */
   room?: string;
   /** Small preview for lists. */

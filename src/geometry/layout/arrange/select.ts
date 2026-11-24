@@ -4,9 +4,13 @@ import { shuffle } from './rng.ts';
 import type { ArrangePiece, Zone } from './types.ts';
 import { zoneArea } from './zone.ts';
 
-/** Total art area as a share of the target zone (spec "Suggest a set", applied to the art zone). */
-export const FILL_MIN = 0.35;
-export const FILL_MAX = 0.5;
+/**
+ * Total art area as a share of the target group box. Within a group's own box,
+ * art fills roughly 55–70% (the rest is gaps). The spec's "35–50% of the wall"
+ * rule is for the whole wall, not the group's box.
+ */
+export const FILL_MIN = 0.5;
+export const FILL_MAX = 0.7;
 /** Largest piece's area / smallest piece's area allowed in one set (avoids a postage stamp next to a poster). */
 export const MAX_AREA_RATIO = 10;
 export const MAX_PIECES = 9;
